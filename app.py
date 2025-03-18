@@ -25,6 +25,7 @@ token_listener = JWTBearer()
 @app.get("/", tags=["Root"])
 async def read_root() -> dict:
     """Root endpoint."""
+    print("visisted this root")
     return {"message": "Welcome to this fantastic app."}
 
 
