@@ -49,44 +49,43 @@ class Role(str, Enum):
 
 
 class Activity(BaseModel):
-    date: datetime.date = Field(..., description="Date of the activity")
-    teams_messages_sent: int = Field(..., ge=0, description="Number of Teams messages sent")
-    emails_sent: int = Field(..., ge=0, description="Number of emails sent")
-    meetings_attended: int = Field(..., ge=0, description="Number of meetings attended")
-    work_hours: float = Field(..., ge=0, description="Number of work hours")
-
+    Date: datetime.date = Field(..., description="Date of the activity")
+    Teams_Messages_Sent: int = Field(..., ge=0, description="Number of Teams messages sent")
+    Emails_Sent: int = Field(..., ge=0, description="Number of emails sent") 
+    Meetings_Attended: int = Field(..., ge=0, description="Number of meetings attended")
+    Work_Hours: float = Field(..., ge=0, description="Number of work hours")
 
 class Leave(BaseModel):
-    leave_type: LeaveType = Field(..., description="Type of leave taken")
-    leave_days: int = Field(..., ge=1, description="Number of leave days")
-    leave_start_date: datetime.date = Field(..., description="Start date of the leave")
-    leave_end_date: datetime.date = Field(..., description="End date of the leave")
+    Leave_Type: LeaveType = Field(..., description="Type of leave taken")
+    Leave_Days: int = Field(..., ge=1, description="Number of leave days")
+    Leave_Start_Date: datetime.date = Field(..., description="Start date of the leave")
+    Leave_End_Date: datetime.date = Field(..., description="End date of the leave")
 
 
 class Onboarding(BaseModel):
-    joining_date: datetime.date = Field(..., description="Date of joining")
-    onboarding_feedback: OnboardingFeedback = Field(..., description="Feedback on onboarding experience")
-    mentor_assigned: bool = Field(..., description="Whether a mentor was assigned")
-    initial_training_completed: bool = Field(..., description="Whether initial training was completed")
+    Joining_Date: datetime.date = Field(..., description="Date of joining")
+    Onboarding_Feedback: OnboardingFeedback = Field(..., description="Feedback on onboarding experience")
+    Mentor_Assigned: bool = Field(..., description="Whether a mentor was assigned")
+    Initial_Training_Completed: bool = Field(..., description="Whether initial training was completed")
 
 
 class Performance(BaseModel):
-    review_period: str = Field(..., description="Period of performance review")
-    performance_rating: int = Field(..., ge=1, le=4, description="Performance rating from 1 to 4")
-    manager_feedback: ManagerFeedback = Field(..., description="Feedback from the manager")
-    promotion_consideration: bool = Field(..., description="Whether the employee is considered for promotion")
+    Review_Period: str = Field(..., description="Period of performance review")
+    Performance_Rating: int = Field(..., ge=1, le=4, description="Performance rating from 1 to 4")
+    Manager_Feedback: ManagerFeedback = Field(..., description="Feedback from the manager")
+    Promotion_Consideration: bool = Field(..., description="Whether the employee is considered for promotion")
 
 
 class Reward(BaseModel):
-    award_type: AwardType = Field(..., description="Type of award received")
-    award_date: datetime.date = Field(..., description="Date of the award")
-    reward_points: int = Field(..., ge=0, description="Points awarded for the reward")
+    Award_Type: AwardType = Field(..., description="Type of award received")
+    Award_Date: datetime.date = Field(..., description="Date of the award")
+    Reward_Points: int = Field(..., ge=0, description="Points awarded for the reward")
 
 
 class VibeMeter(BaseModel):
-    response_date: datetime.date = Field(..., description="Date of the vibe response")
-    vibe_score: int = Field(..., ge=1, le=6, description="Score indicating the employee's vibe, from 1 to 6")
-    emotion_zone: EmotionZone = Field(..., description="Emotional zone based on the vibe score")
+    Response_Date: datetime.date = Field(..., description="Date of the vibe response")
+    Vibe_Score: int = Field(..., ge=1, le=6, description="Score indicating the employee's vibe, from 1 to 6")
+    Emotion_Zone: EmotionZone = Field(..., description="Emotional zone based on the vibe score")
 
 
 class CompanyData(BaseModel):
