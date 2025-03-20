@@ -130,3 +130,7 @@ dmypy.json
 .idea/
 
 .vercel
+
+#employee data
+employee_data.json
+setup_data.py
