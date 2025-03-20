@@ -109,6 +109,7 @@ class Employee(Document):
     blocked_at: Optional[datetime.datetime] = Field(default=None, description="Timestamp when the employee was blocked")
     blocked_by: Optional[str] = Field(default=None, description="Employee ID of who blocked this employee")
     company_data: CompanyData = Field(default_factory=CompanyData, description="Company related data for the employee")
+    account_activated: bool = Field(default=False, description="Whether the employee's account is activated")
     
     @field_validator("employee_id")
     @classmethod
