@@ -1,15 +1,17 @@
 # schemas common for all three types of users (admin, hr, user)
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
 import datetime
 from typing import Optional
 from models.employee import CompanyData, Role
 from fastapi.security import HTTPBasicCredentials
 
-class EmployeeSignIn(HTTPBasicCredentials):
+class EmployeeSignIn(BaseModel):
+    employee_id: str
+    password: str
     class Config:
         json_schema_extra = {
             "example": {
-                "username": "EMP0001",
+                "employee_id": "EMP0001",
                 "password": "password"
             }
         }
@@ -79,3 +81,14 @@ class EmployeeData(BaseModel):
                 }
             }
         }
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+
+class ForgotPasswordResponse(BaseModel):
+    message: str
+
+class ResetPasswordRequest(BaseModel):
+    # reset_token: str = Field(..., description="Token sent to user for password reset")
+    new_password: str = Field(..., min_length=8, description="New password for the user")

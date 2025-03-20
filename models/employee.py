@@ -49,67 +49,62 @@ class Role(str, Enum):
 
 
 class Activity(BaseModel):
-    date: datetime.date = Field(..., description="Date of the activity")
-    teams_messages_sent: int = Field(..., ge=0, description="Number of Teams messages sent")
-    emails_sent: int = Field(..., ge=0, description="Number of emails sent")
-    meetings_attended: int = Field(..., ge=0, description="Number of meetings attended")
-    work_hours: float = Field(..., ge=0, description="Number of work hours")
+    date: Optional[datetime.date] = Field(None, description="Date of the activity")
+    teams_messages_sent: Optional[int] = Field(None, ge=0, description="Number of Teams messages sent")
+    emails_sent: Optional[int] = Field(None, ge=0, description="Number of emails sent")
+    meetings_attended: Optional[int] = Field(None, ge=0, description="Number of meetings attended")
+    work_hours: Optional[float] = Field(None, ge=0, description="Number of work hours")
 
 
 class Leave(BaseModel):
-    leave_type: LeaveType = Field(..., description="Type of leave taken")
-    leave_days: int = Field(..., ge=1, description="Number of leave days")
-    leave_start_date: datetime.date = Field(..., description="Start date of the leave")
-    leave_end_date: datetime.date = Field(..., description="End date of the leave")
+    leave_type: Optional[LeaveType] = Field(None, description="Type of leave taken")
+    leave_days: Optional[int] = Field(None, ge=1, description="Number of leave days")
+    leave_start_date: Optional[datetime.date] = Field(None, description="Start date of the leave")
+    leave_end_date: Optional[datetime.date] = Field(None, description="End date of the leave")
 
 
 class Onboarding(BaseModel):
-    joining_date: datetime.date = Field(..., description="Date of joining")
-    onboarding_feedback: OnboardingFeedback = Field(..., description="Feedback on onboarding experience")
-    mentor_assigned: bool = Field(..., description="Whether a mentor was assigned")
-    initial_training_completed: bool = Field(..., description="Whether initial training was completed")
+    joining_date: Optional[datetime.date] = Field(None, description="Date of joining")
+    onboarding_feedback: Optional[OnboardingFeedback] = Field(None, description="Feedback on onboarding experience")
+    mentor_assigned: Optional[bool] = Field(None, description="Whether a mentor was assigned")
+    initial_training_completed: Optional[bool] = Field(None, description="Whether initial training was completed")
 
 
 class Performance(BaseModel):
-    review_period: str = Field(..., description="Period of performance review")
-    performance_rating: int = Field(..., ge=1, le=4, description="Performance rating from 1 to 4")
-    manager_feedback: ManagerFeedback = Field(..., description="Feedback from the manager")
-    promotion_consideration: bool = Field(..., description="Whether the employee is considered for promotion")
+    review_period: Optional[str] = Field(None, description="Period of performance review")
+    performance_rating: Optional[int] = Field(None, ge=1, le=4, description="Performance rating from 1 to 4")
+    manager_feedback: Optional[ManagerFeedback] = Field(None, description="Feedback from the manager")
+    promotion_consideration: Optional[bool] = Field(None, description="Whether the employee is considered for promotion")
 
 
 class Reward(BaseModel):
-    award_type: AwardType = Field(..., description="Type of award received")
-    award_date: datetime.date = Field(..., description="Date of the award")
-    reward_points: int = Field(..., ge=0, description="Points awarded for the reward")
+    award_type: Optional[AwardType] = Field(None, description="Type of award received")
+    award_date: Optional[datetime.date] = Field(None, description="Date of the award")
+    reward_points: Optional[int] = Field(None, ge=0, description="Points awarded for the reward")
 
 
 class VibeMeter(BaseModel):
-    response_date: datetime.date = Field(..., description="Date of the vibe response")
-    vibe_score: int = Field(..., ge=1, le=6, description="Score indicating the employee's vibe, from 1 to 6")
-    emotion_zone: EmotionZone = Field(..., description="Emotional zone based on the vibe score")
+    response_date: Optional[datetime.date] = Field(None, description="Date of the vibe response")
+    vibe_score: Optional[int] = Field(None, ge=1, le=6, description="Score indicating the employee's vibe, from 1 to 6")
+    emotion_zone: Optional[EmotionZone] = Field(None, description="Emotional zone based on the vibe score")
 
 
 class CompanyData(BaseModel):
-    activity: List[Activity] = Field(default_factory=list, description="Employee activity data")
-    leave: List[Leave] = Field(default_factory=list, description="Employee leave data")
-    onboarding: List[Onboarding] = Field(default_factory=list, description="Employee onboarding data")
-    performance: List[Performance] = Field(default_factory=list, description="Employee performance data")
-    rewards: List[Reward] = Field(default_factory=list, description="Employee rewards data")
-    vibemeter: List[VibeMeter] = Field(default_factory=list, description="Employee vibemeter data")
+    activity: Optional[List[Optional[Activity]]] = Field(default=None, description="Employee activity data")
+    leave: Optional[List[Optional[Leave]]] = Field(default=None, description="Employee leave data")
+    onboarding: Optional[List[Optional[Onboarding]]] = Field(default=None, description="Employee onboarding data")
+    performance: Optional[List[Optional[Performance]]] = Field(default=None, description="Employee performance data")
+    rewards: Optional[List[Optional[Reward]]] = Field(default=None, description="Employee rewards data")
+    vibemeter: Optional[List[Optional[VibeMeter]]] = Field(default=None, description="Employee vibemeter data")
 
 
 class Employee(Document):
     employee_id: str = Field(..., description="Unique identifier for the employee")
-    name: str = Field(..., description="Full name of the employee")
     email: str = Field(..., description="Employee email address")
     password: str = Field(..., description="Employee password (hashed)")
     role: Role = Field(..., description="User role in the system")
     manager_id: Optional[str] = Field(default=None, description="ID of the employee's manager")
-    is_blocked: bool = Field(default=False, description="Whether the employee is blocked")
-    blocked_at: Optional[datetime.datetime] = Field(default=None, description="Timestamp when the employee was blocked")
-    blocked_by: Optional[str] = Field(default=None, description="Employee ID of who blocked this employee")
-    company_data: CompanyData = Field(default_factory=CompanyData, description="Company related data for the employee")
-    account_activated: bool = Field(default=False, description="Whether the employee's account is activated")
+    company_data: Optional[CompanyData] = Field(default=None, description="Company related data for the employee")
     
     @field_validator("employee_id")
     @classmethod
@@ -122,14 +117,10 @@ class Employee(Document):
         json_schema_extra = {
             "example": {
                 "employee_id": "EMP0001",
-                "name": "John Doe",
                 "email": "EMP0001@gmail.com",
                 "password": "password",
                 "role": "employee",
                 "manager_id": "EMP1001",
-                "is_blocked": False,
-                "blocked_at": None,
-                "blocked_by": None,
                 "company_data": {
                     "activity": [
                         {
