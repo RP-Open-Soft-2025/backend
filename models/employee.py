@@ -100,10 +100,14 @@ class CompanyData(BaseModel):
 
 class Employee(Document):
     employee_id: str = Field(..., description="Unique identifier for the employee")
+    name: str = Field(..., description="Full name of the employee")
     email: str = Field(..., description="Employee email address")
     password: str = Field(..., description="Employee password (hashed)")
     role: Role = Field(..., description="User role in the system")
     manager_id: Optional[str] = Field(default=None, description="ID of the employee's manager")
+    is_blocked: bool = Field(default=False, description="Whether the employee is blocked")
+    blocked_at: Optional[datetime.datetime] = Field(default=None, description="Timestamp when the employee was blocked")
+    blocked_by: Optional[str] = Field(default=None, description="Employee ID of who blocked this employee")
     company_data: Optional[CompanyData] = Field(default=None, description="Company related data for the employee")
     
     @field_validator("employee_id")
