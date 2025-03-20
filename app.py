@@ -3,7 +3,9 @@ from contextlib import asynccontextmanager
 from auth.jwt_bearer import JWTBearer
 from config.config import initiate_database
 from routes.login import router as LoginRouter
-
+from routes.auth.forgotPassword import router as ForgotPasswordRouter
+from routes.auth.resetPassword import router as ResetPasswordRouter 
+from routes.auth.login import router as LoginRouter
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -28,5 +30,7 @@ async def read_root() -> dict:
 
 
 # Including routers
-app.include_router(LoginRouter, tags=["Login"], prefix="/login")
+app.include_router(LoginRouter,prefix="/auth/login", tags=["Login"])
+app.include_router(ForgotPasswordRouter, prefix="/auth/forgot-password", tags=["Forgot Password"])
+app.include_router(ResetPasswordRouter, prefix="/auth/reset-password", tags=["Reset Password"])
 
