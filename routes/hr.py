@@ -3,6 +3,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from fastapi.security import OAuth2PasswordBearer, HTTPAuthorizationCredentials
 from auth.jwt_handler import decode_jwt
 from models.employee import Employee, Role
+import datetime
 
 router = APIRouter()
 security = OAuth2PasswordBearer(tokenUrl="token")
@@ -23,7 +24,9 @@ async def block_user_hr(userId: str, token: HTTPAuthorizationCredentials = Depen
         raise HTTPException(status_code=404, detail="Employee not found")
 
     if emp_user.manager_id == claims_jwt["user_id"]:
-        # TODO: After block added to model, add blocked set to true
+        emp_user.is_blocked = True
+        emp_user.blocked_by = emp_user.employee_id
+        emp_user.blocked_at = datetime.datetime.now()
         return {"msg": f"{emp_user.employee_id} is blocked"}
     else:
         return HTTPException(403, "Error not employee of HR")
@@ -45,7 +48,9 @@ async def unblock_user_hr(userId: str, token: HTTPAuthorizationCredentials = Dep
         raise HTTPException(status_code=404, detail="Employee not found")
 
     if emp_user.manager_id == claims_jwt["user_id"]:
-        # TODO: After block added to model, add blocked set to false
+        emp_user.is_blocked = False
+        emp_user.blocked_by = None
+        emp_user.blocked_at = None
         return {"msg": f"{emp_user.employee_id} is unblocked"}
     else:
         return HTTPException(403, "Error not employee of HR")
