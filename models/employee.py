@@ -55,11 +55,55 @@ class Activity(BaseModel):
     Meetings_Attended: int = Field(..., ge=0, description="Number of meetings attended")
     Work_Hours: float = Field(..., ge=0, description="Number of work hours")
 
+    @field_validator("Date", mode="before")
+    @classmethod
+    def parse_date(cls, v):
+        if isinstance(v, str):
+            try:
+                # Try parsing different date formats
+                if "/" in v:
+                    # Handle format like "12/12/2023"
+                    month, day, year = map(int, v.split("/"))
+                    return datetime.date(year, month, day)
+                elif "-" in v:
+                    # Handle format like "2023-12-12"
+                    return datetime.date.fromisoformat(v)
+                else:
+                    raise ValueError(f"Unsupported date format: {v}")
+            except Exception as e:
+                raise ValueError(f"Invalid date format: {v}. Error: {str(e)}")
+        elif isinstance(v, datetime.date):
+            return v
+        elif isinstance(v, datetime.datetime):
+            return v.date()
+        raise ValueError(f"Invalid date type: {type(v)}")
+
+
 class Leave(BaseModel):
     Leave_Type: LeaveType = Field(..., description="Type of leave taken")
     Leave_Days: int = Field(..., ge=1, description="Number of leave days")
     Leave_Start_Date: datetime.date = Field(..., description="Start date of the leave")
     Leave_End_Date: datetime.date = Field(..., description="End date of the leave")
+
+    @field_validator("Leave_Start_Date", "Leave_End_Date", mode="before")
+    @classmethod
+    def parse_date(cls, v):
+        if isinstance(v, str):
+            try:
+                if "/" in v:
+                    month, day, year = map(int, v.split("/"))
+                    return datetime.date(year, month, day)
+                elif "-" in v:
+                    return datetime.date.fromisoformat(v)
+                else:
+                    raise ValueError(f"Unsupported date format: {v}")
+            except Exception as e:
+                raise ValueError(f"Invalid date format: {v}. Error: {str(e)}")
+        elif isinstance(v, datetime.date):
+            return v
+        elif isinstance(v, datetime.datetime):
+            return v.date()
+        raise ValueError(f"Invalid date type: {type(v)}")
 
 
 class Onboarding(BaseModel):
@@ -67,6 +111,26 @@ class Onboarding(BaseModel):
     Onboarding_Feedback: OnboardingFeedback = Field(..., description="Feedback on onboarding experience")
     Mentor_Assigned: bool = Field(..., description="Whether a mentor was assigned")
     Initial_Training_Completed: bool = Field(..., description="Whether initial training was completed")
+
+    @field_validator("Joining_Date", mode="before")
+    @classmethod
+    def parse_date(cls, v):
+        if isinstance(v, str):
+            try:
+                if "/" in v:
+                    month, day, year = map(int, v.split("/"))
+                    return datetime.date(year, month, day)
+                elif "-" in v:
+                    return datetime.date.fromisoformat(v)
+                else:
+                    raise ValueError(f"Unsupported date format: {v}")
+            except Exception as e:
+                raise ValueError(f"Invalid date format: {v}. Error: {str(e)}")
+        elif isinstance(v, datetime.date):
+            return v
+        elif isinstance(v, datetime.datetime):
+            return v.date()
+        raise ValueError(f"Invalid date type: {type(v)}")
 
 
 class Performance(BaseModel):
@@ -81,11 +145,51 @@ class Reward(BaseModel):
     Award_Date: datetime.date = Field(..., description="Date of the award")
     Reward_Points: int = Field(..., ge=0, description="Points awarded for the reward")
 
+    @field_validator("Award_Date", mode="before")
+    @classmethod
+    def parse_date(cls, v):
+        if isinstance(v, str):
+            try:
+                if "/" in v:
+                    month, day, year = map(int, v.split("/"))
+                    return datetime.date(year, month, day)
+                elif "-" in v:
+                    return datetime.date.fromisoformat(v)
+                else:
+                    raise ValueError(f"Unsupported date format: {v}")
+            except Exception as e:
+                raise ValueError(f"Invalid date format: {v}. Error: {str(e)}")
+        elif isinstance(v, datetime.date):
+            return v
+        elif isinstance(v, datetime.datetime):
+            return v.date()
+        raise ValueError(f"Invalid date type: {type(v)}")
+
 
 class VibeMeter(BaseModel):
     Response_Date: datetime.date = Field(..., description="Date of the vibe response")
     Vibe_Score: int = Field(..., ge=1, le=6, description="Score indicating the employee's vibe, from 1 to 6")
     Emotion_Zone: EmotionZone = Field(..., description="Emotional zone based on the vibe score")
+
+    @field_validator("Response_Date", mode="before")
+    @classmethod
+    def parse_date(cls, v):
+        if isinstance(v, str):
+            try:
+                if "/" in v:
+                    month, day, year = map(int, v.split("/"))
+                    return datetime.date(year, month, day)
+                elif "-" in v:
+                    return datetime.date.fromisoformat(v)
+                else:
+                    raise ValueError(f"Unsupported date format: {v}")
+            except Exception as e:
+                raise ValueError(f"Invalid date format: {v}. Error: {str(e)}")
+        elif isinstance(v, datetime.date):
+            return v
+        elif isinstance(v, datetime.datetime):
+            return v.date()
+        raise ValueError(f"Invalid date type: {type(v)}")
 
 
 class CompanyData(BaseModel):
