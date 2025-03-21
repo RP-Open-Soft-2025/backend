@@ -34,20 +34,42 @@ async def escalate_chat(request: EscalateChatRequest = Body(...)):
     existing_meetings = await Meet.find({"with_user_id": manager_id}).to_list()
     
     current_time = datetime.now()
-    hours_delay = random.uniform(2, 3)  # Random value between 2-3 hours
-    proposed_time = current_time + timedelta(hours=hours_delay)
+    earliest_start_time = current_time
     duration_minutes = 480 if not request.timeDuartion else request.timeDuartion
-    
-    for meeting in existing_meetings:
-        meeting_start = meeting.scheduled_at
-        meeting_end = meeting_start + timedelta(minutes=meeting.duration_minutes)
+
+    # Sort existing meetings by start time
+    sorted_meetings = sorted(existing_meetings, key=lambda m: m.scheduled_at)
+
+    # If no meetings, use the initial proposed time
+    if not sorted_meetings:
+        proposed_time = earliest_start_time
+    else:
+        # Initialize variables for finding gaps
+        proposed_time = None
         
-        proposed_end = proposed_time + timedelta(minutes=duration_minutes)
+        # Check if there's space before the first meeting
+        first_meeting_start = sorted_meetings[0].scheduled_at
+        if (first_meeting_start - earliest_start_time).total_seconds() / 60 >= duration_minutes:
+            proposed_time = earliest_start_time
         
-        if (meeting_start <= proposed_time < meeting_end) or \
-           (meeting_start < proposed_end <= meeting_end) or \
-           (proposed_time <= meeting_start and proposed_end >= meeting_end):
-            proposed_time = meeting_end
+        # If no space before first meeting, check for gaps between meetings
+        if proposed_time is None:
+            for i in range(len(sorted_meetings) - 1):
+                current_meeting_end = sorted_meetings[i].scheduled_at + timedelta(minutes=sorted_meetings[i].duration_minutes)
+                next_meeting_start = sorted_meetings[i + 1].scheduled_at
+                
+                # If current meeting ends after our earliest possible start time
+                # and there's enough gap before the next meeting
+                if current_meeting_end >= earliest_start_time and \
+                (next_meeting_start - current_meeting_end).total_seconds() / 60 >= duration_minutes:
+                    proposed_time = max(current_meeting_end, earliest_start_time)
+                    break
+        
+        # If still no time found, schedule after the last meeting
+        if proposed_time is None:
+            last_meeting = sorted_meetings[-1]
+            last_meeting_end = last_meeting.scheduled_at + timedelta(minutes=last_meeting.duration_minutes)
+            proposed_time = max(last_meeting_end, earliest_start_time)
     
     new_meet = Meet(
         user_id=user.employee_id,
