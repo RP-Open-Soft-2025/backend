@@ -3,7 +3,7 @@ import datetime
 from enum import Enum
 from beanie import Document
 from pydantic import BaseModel, Field
-
+import uuid
 
 class MeetStatus(str, Enum):
     SCHEDULED = "scheduled"  # Meeting is scheduled
@@ -14,7 +14,7 @@ class MeetStatus(str, Enum):
 
 
 class Meet(Document):
-    meet_id: str = Field(..., description="Unique identifier for the meeting")
+    meet_id: str = Field(default_factory=lambda: f"MEET{uuid.uuid4().hex[:6].upper()}", description="Unique identifier for the meeting")
     user_id: str = Field(..., description="Employee ID of the user who scheduled the meeting")
     with_user_id: str = Field(..., description="Employee ID of the person the meeting is with")
     scheduled_at: datetime.datetime = Field(..., description="When the meeting is scheduled for")
@@ -77,6 +77,12 @@ class Meet(Document):
             "scheduled_at": {"$gt": now},
             "status": MeetStatus.SCHEDULED
         }).to_list()
+    
+    async def initiate_meeting(self):
+        self.status = MeetStatus.SCHEDULED
+        self.created_at = datetime.datetime.utcnow()
+        self.updated_at = datetime.datetime.utcnow()
+        await self.save()
 
     async def start_meeting(self):
         if self.status != MeetStatus.SCHEDULED:
