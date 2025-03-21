@@ -211,6 +211,7 @@ class Employee(Document):
     is_blocked: bool = Field(default=False, description="Whether the employee is blocked")
     blocked_at: Optional[datetime.datetime] = Field(default=None, description="Timestamp when the employee was blocked")
     blocked_by: Optional[str] = Field(default=None, description="Employee ID of who blocked this employee")
+    blocked_reason: Optional[str] = Field(default=None, description="Reason for blocking the employee")
     company_data: CompanyData = Field(default_factory=CompanyData, description="Company related data for the employee")
     account_activated: bool = Field(default=False, description="Whether the employee's account is activated")
     
