@@ -7,20 +7,8 @@ from models.employee import Employee
 from models.chat import Chat
 from auth.jwt_bearer import JWTBearer
 from auth.jwt_handler import decode_jwt
-from passlib.context import CryptContext
 
 router = APIRouter()
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
-async def verify_admin_or_hr(token: str = Depends(JWTBearer())):
-    """Verify that the user is either an admin or HR."""
-    payload = decode_jwt(token)
-    if not payload or payload.get("role") not in ["admin", "hr"]:
-        raise HTTPException(
-            status_code=403,
-            detail="Only administrators and HR can access this endpoint"
-        )
-    return payload
 
 class SessionResponse(BaseModel):
     session_id: str
@@ -29,105 +17,94 @@ class SessionResponse(BaseModel):
     status: str
     scheduled_at: datetime
 
-
-class CreateSessionRequest(BaseModel):
-    scheduled_at: datetime
-    notes: Optional[str] = None
-
-
-class CreateSessionResponse(BaseModel):
-    chat_id: str
-    session_id: str
-    message: str
-
-
-
-@router.get("/sessions", response_model=List[SessionResponse], tags=["Admin"])
-async def get_all_active_sessions(admin: dict = Depends(verify_admin_or_hr)):
-    """Get all active chat sessions with their session status"""
+@router.get("/", response_model=List[SessionResponse])
+async def get_user_sessions(token: str = Depends(JWTBearer())):
+    """
+    Get sessions for the authenticated user.
+    Returns a list of sessions associated with the user.
+    """
     try:
-        # Get all active sessions
-        active_sessions = await Session.find({"status": SessionStatus.PENDING}).to_list()
+        # Decode the JWT token to get user info
+        payload = decode_jwt(token)
+        user_id = payload.get("employee_id")
+        user_role = payload.get("role")
         
-        return [
+        if not user_id:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid token: employee_id not found"
+            )
+
+        # Get sessions based on role
+        if user_role == "admin":
+            # Admins can see all sessions
+            sessions = await Session.get_all()
+        else:
+            # Regular users can only see their sessions
+            sessions = await Session.get_by_user_id(user_id)
+        
+        # Convert sessions to response format
+        session_responses = [
             SessionResponse(
                 session_id=session.session_id,
-                employee_id=session.employee_id,
+                employee_id=session.user_id,
                 chat_id=session.chat_id,
-                status=session.status.value,  # Convert enum to string
+                status=session.status.value,
                 scheduled_at=session.scheduled_at
             )
-            for session in active_sessions
+            for session in sessions
         ]
+        
+        return session_responses
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error fetching sessions: {str(e)}"
+        )
 
-
-@router.post("/session/{employee_id}", response_model=CreateSessionResponse, tags=["Admin"])
-async def create_chat_session(
-    employee_id: str,
-    session_data: CreateSessionRequest,
-    admin: dict = Depends(verify_admin_or_hr)
-):
-    """Create a new chat session for a specific user"""
+@router.get("/{session_id}", response_model=SessionResponse)
+async def get_session(session_id: str, token: str = Depends(JWTBearer())):
+    """
+    Get a specific session by ID.
+    Users can only access their own sessions unless they are admins.
+    """
     try:
-        # Check if user exists
-        user = await Employee.find_one({"employee_id": employee_id})
+        # Decode the JWT token to get user info
+        payload = decode_jwt(token)
+        user_id = payload.get("employee_id")
+        user_role = payload.get("role")
         
-        if not user:
-            raise HTTPException(status_code=404, detail=f"User with ID {employee_id} not found")
+        if not user_id:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid token: employee_id not found"
+            )
 
-        # Check if user is blocked
-        if user.is_blocked:
-            raise HTTPException(status_code=400, detail=f"User {employee_id} is blocked")
+        # Get the session
+        session = await Session.get_by_id(session_id)
+        
+        if not session:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Session with ID {session_id} not found"
+            )
 
-        print(f"Creating new chat for user {employee_id}")
-        # Create new chat
-        new_chat = Chat(
-            user_id=employee_id,
-            messages=[],
-            mood_score=-1
-        )
+        # Check if user has access to this session
+        if session.user_id != user_id and user_role not in ["admin", "hr"]:
+            raise HTTPException(
+                status_code=403,
+                detail="You don't have permission to access this session"
+            )
         
-        print(f"Attempting to save chat with ID: {new_chat.chat_id}")
-        # Save the chat document
-        try:
-            await new_chat.save()
-            print("Chat saved successfully")
-        except Exception as chat_error:
-            print(f"Error saving chat: {str(chat_error)}")
-            raise
-
-        print("Creating new session")
-        # Create new session
-        new_session = Session(
-            user_id=employee_id,
-            chat_id=new_chat.chat_id,
-            status=SessionStatus.PENDING,
-            scheduled_at=session_data.scheduled_at,
-            notes=session_data.notes
+        return SessionResponse(
+            session_id=session.session_id,
+            employee_id=session.user_id,
+            chat_id=session.chat_id,
+            status=session.status.value,
+            scheduled_at=session.scheduled_at
         )
-        
-        print(f"Attempting to save session with ID: {new_session.session_id}")
-        # Save the session document
-        try:
-            await new_session.save()
-            print("Session saved successfully")
-        except Exception as session_error:
-            print(f"Error saving session: {str(session_error)}")
-            raise
-        
-        return CreateSessionResponse(
-            chat_id=new_chat.chat_id,
-            session_id=new_session.session_id,
-            message="Chat session created successfully"
-        )
-    except HTTPException as he:
-        raise he
     except Exception as e:
-        print(f"Error creating chat session: {str(e)}")
-        print(f"Error type: {type(e)}")
-        import traceback
-        print(f"Traceback: {traceback.format_exc()}")
-        raise HTTPException(status_code=500, detail=str(e))
-
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error fetching session: {str(e)}"
+        ) 

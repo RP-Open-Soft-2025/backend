@@ -28,6 +28,23 @@ class DeleteUserRequest(BaseModel):
     reason: Optional[str] = Field(default=None, description="Reason for deleting the user")
 
 
+class CreateSessionRequest(BaseModel):
+    scheduled_at: datetime = Field(..., description="When the session is scheduled for")
+    notes: Optional[str] = Field(default=None, description="Any additional notes about the session")
+
+
+class SessionResponse(BaseModel):
+    session_id: str
+    employee_id: str
+    chat_id: str
+    status: str
+    scheduled_at: datetime
+
+
+class ReassignHrRequest(BaseModel):
+    newHrId: str = Field(..., description="ID of the new HR to assign")
+
+
 async def verify_admin(token: str = Depends(JWTBearer())):
     """Verify that the user is an admin."""
     payload = decode_jwt(token)
@@ -148,3 +165,199 @@ async def delete_user(
         )
 
 
+@router.post("/session/{user_id}", tags=["Admin"])
+async def create_session(
+    user_id: str,
+    session_data: CreateSessionRequest,
+    admin: dict = Depends(verify_admin)
+):
+    """
+    Create a new session for an employee.
+    Only administrators can access this endpoint.
+    """
+    # Verify the employee exists
+    employee = await Employee.get_by_id(user_id)
+    if not employee:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Employee with ID {user_id} not found"
+        )
+
+    # Create a new chat for the session
+    chat = Chat(user_id=user_id)
+    await chat.save()
+
+    # Create a new session
+    session = Session(
+        user_id=user_id,
+        chat_id=chat.chat_id,
+        scheduled_at=session_data.scheduled_at,
+        notes=session_data.notes
+    )
+    await session.save()
+
+    return {
+        "message": "Chat has created successfully",
+        "chat_id": chat.chat_id,
+        "session_id": session.session_id
+    }
+
+
+@router.get("/sessions", response_model=List[SessionResponse], tags=["Admin"])
+async def get_all_sessions(admin: dict = Depends(verify_admin)):
+    """
+    Get all sessions in the system.
+    Only administrators can access this endpoint.
+    Returns a list of all sessions with their details.
+    """
+    try:
+        # Get all sessions
+        sessions = await Session.get_all()
+        
+        # Convert sessions to response format
+        session_responses = [
+            SessionResponse(
+                session_id=session.session_id,
+                employee_id=session.user_id,
+                chat_id=session.chat_id,
+                status=session.status.value,
+                scheduled_at=session.scheduled_at
+            )
+            for session in sessions
+        ]
+        
+        return session_responses
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error fetching sessions: {str(e)}"
+        )
+    
+
+
+
+
+
+@router.get("/list-users", tags=["Admin"])
+async def list_users(admin: dict = Depends(verify_admin)):
+    """
+    Get a list of all users with their session data.
+    Only administrators can access this endpoint.
+    """
+    try:
+        # Get all employees
+        employees = await Employee.find_all().to_list()
+        
+        # Format the response
+        users = []
+        for employee in employees:
+            # Get the latest vibe meter entry for session data
+            latest_vibe = None
+            if employee.company_data.vibemeter:
+                latest_vibe = employee.company_data.vibemeter[-1]
+            
+            user_data = {
+                "userId": employee.employee_id,
+                "name": employee.name,
+                "email": employee.email,
+                "role": employee.role,
+                "status": "active" if not employee.is_blocked else "blocked",
+                "sessionData": {
+                    "moodScores": [
+                        {
+                            "timestamp": vibe.Response_Date.isoformat(),
+                            "score": vibe.Vibe_Score
+                        }
+                        for vibe in employee.company_data.vibemeter
+                    ]
+                }
+            }
+            users.append(user_data)
+        
+        return {"users": users}
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error fetching users: {str(e)}"
+        )
+
+
+@router.patch("/reassign-hr/{userId}", tags=["Admin"])
+async def reassign_hr(
+    userId: str,
+    reassign_data: ReassignHrRequest,
+    admin: dict = Depends(verify_admin)
+):
+    """
+    Reassign HR for an existing user.
+    Only administrators can access this endpoint.
+    """
+    # Get the employee to reassign
+    employee = await Employee.get_by_id(userId)
+    if not employee:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Employee with ID {userId} not found"
+        )
+
+    # Get the new HR
+    new_hr = await Employee.get_by_id(reassign_data.newHrId)
+    if not new_hr:
+        raise HTTPException(
+            status_code=404,
+            detail=f"New HR with ID {reassign_data.newHrId} not found"
+        )
+
+    # Verify the new HR is actually an HR
+    if new_hr.role != Role.HR:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Employee {reassign_data.newHrId} is not an HR personnel"
+        )
+
+    try:
+        # Update the manager_id
+        employee.manager_id = reassign_data.newHrId
+        await employee.save()
+        
+        return {
+            "message": "HR reassigned successfully",
+            "userId": userId,
+            "newHrId": reassign_data.newHrId
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error reassigning HR: {str(e)}"
+        )
+
+
+@router.get("/list-hr", tags=["Admin"])
+async def list_hr(admin: dict = Depends(verify_admin)):
+    """
+    Get a list of all HR personnel with their current workload.
+    Only administrators can access this endpoint.
+    """
+    try:
+        # Get all HR personnel
+        hr_personnel = await Employee.find({"role": Role.HR}).to_list()
+        
+        # Format the response
+        hrs = []
+        for hr in hr_personnel:
+            # Count assigned users
+            assigned_users = await Employee.find({"manager_id": hr.employee_id}).count()
+            
+            hr_data = {
+                "hrId": hr.employee_id,
+                "name": hr.name,
+                "currentAssignedUsers": assigned_users
+            }
+            hrs.append(hr_data)
+        
+        return {"hrs": hrs}
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error fetching HR list: {str(e)}"
+        )
