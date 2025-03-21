@@ -3,11 +3,10 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from fastapi import HTTPException
 import logging
-
+from config.config import Settings
 async def send_email(to_email: str, reset_link: str):
-    sender_email = "web103856@gmail.com"
-    sender_password = "ipdtsisbfvjbrmkp"
-
+    sender_email = Settings().sender_email
+    sender_password = Settings().sender_password
     subject = "Password Reset Request"
     body = f"Click the link to reset your password: {reset_link}"
 
