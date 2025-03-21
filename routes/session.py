@@ -1,4 +1,3 @@
-
 from fastapi import APIRouter, HTTPException, Depends
 from typing import List, Optional
 from datetime import datetime
@@ -85,7 +84,7 @@ async def create_chat_session(
         print(f"Creating new chat for user {employee_id}")
         # Create new chat
         new_chat = Chat(
-            employee_id=employee_id,
+            user_id=employee_id,
             messages=[],
             mood_score=-1
         )
@@ -102,7 +101,7 @@ async def create_chat_session(
         print("Creating new session")
         # Create new session
         new_session = Session(
-            employee_id=employee_id,
+            user_id=employee_id,
             chat_id=new_chat.chat_id,
             status=SessionStatus.PENDING,
             scheduled_at=session_data.scheduled_at,
