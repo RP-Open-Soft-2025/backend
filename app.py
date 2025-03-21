@@ -1,4 +1,5 @@
 from fastapi import FastAPI, Depends
+from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from auth.jwt_bearer import JWTBearer
 from config.config import initiate_database
@@ -20,6 +21,15 @@ app = FastAPI(
     title="Fantastic App",
     description="An API for managing students and administrators.",
     lifespan=lifespan  # Register lifespan handler
+)
+
+# Configure CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allows all origins
+    allow_credentials=True,
+    allow_methods=["*"],  # Allows all methods
+    allow_headers=["*"],  # Allows all headers
 )
 
 token_listener = JWTBearer()
