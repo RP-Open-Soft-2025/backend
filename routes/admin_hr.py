@@ -81,6 +81,7 @@ async def block_user(
     employee.is_blocked = True
     employee.blocked_at = datetime.datetime.utcnow()
     employee.blocked_by = admin_hr["employee_id"]
+    employee.blocked_reason = block_data.reason
 
     try:
         await employee.save()
@@ -88,7 +89,7 @@ async def block_user(
             "message": f"Employee {block_data.employee_id} blocked successfully",
             "blocked_at": employee.blocked_at,
             "blocked_by": employee.blocked_by,
-            "reason": block_data.reason
+            "reason": employee.blocked_reason
         }
     except Exception as e:
         raise HTTPException(

@@ -1,1 +1,0 @@
-# routes for all three types of (admin, hr, user)

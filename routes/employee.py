@@ -24,6 +24,22 @@ async def verify_employee(token: str = Depends(JWTBearer())):
             status_code=401,
             detail="Invalid authentication credentials"
         )
+
+    # use the payload.employee_id to get the employee details
+    employee = await Employee.get_by_id(payload["employee_id"])
+    if not employee:
+        raise HTTPException(
+            status_code=401,
+            detail="Employee not found"
+        )
+
+    # check if the employee is blocked
+    if employee.is_blocked:
+        raise HTTPException(
+            status_code=401,
+            detail="Employee is blocked"
+        )
+
     return payload
 
 
@@ -92,7 +108,7 @@ async def get_user_profile(
     """
     try:
         # Get employee details
-        employee_data = await Employee.get_by_id(employee["user_id"])
+        employee_data = await Employee.get_by_id(employee["employee_id"])
         if not employee_data:
             raise HTTPException(
                 status_code=404,
@@ -111,7 +127,7 @@ async def get_user_profile(
 
         try:
             # Get all chats for mood analysis
-            chats = await Chat.find({"user_id": employee["user_id"]}).to_list()
+            chats = await Chat.find({"user_id": employee["employee_id"]}).to_list()
             
             if chats:
                 # Calculate mood statistics
@@ -166,8 +182,8 @@ async def get_user_profile(
             # Get upcoming meetings count
             response.upcoming_meets = await Meet.find({
                 "$or": [
-                    {"user_id": employee["user_id"]},
-                    {"with_user_id": employee["user_id"]}
+                    {"user_id": employee["employee_id"]},
+                    {"with_user_id": employee["employee_id"]}
                 ],
                 "scheduled_at": {"$gt": datetime.datetime.utcnow()},
                 "status": MeetStatus.SCHEDULED
@@ -178,7 +194,7 @@ async def get_user_profile(
         try:
             # Get upcoming sessions count
             response.upcoming_sessions = await Session.find({
-                "user_id": employee["user_id"],
+                "user_id": employee["employee_id"],
                 "scheduled_at": {"$gt": datetime.datetime.utcnow()},
                 "status": SessionStatus.PENDING
             }).count()
@@ -216,7 +232,7 @@ async def get_scheduled_meets(
         # Get meetings where user is the organizer
         try:
             organizer_meets = await Meet.find({
-                "user_id": employee["user_id"],
+                "user_id": employee["employee_id"],
                 "scheduled_at": {"$gt": datetime.datetime.utcnow()},
                 "status": MeetStatus.SCHEDULED
             }).to_list()
@@ -226,7 +242,7 @@ async def get_scheduled_meets(
         # Get meetings where user is the participant
         try:
             participant_meets = await Meet.find({
-                "with_user_id": employee["user_id"],
+                "with_user_id": employee["employee_id"],
                 "scheduled_at": {"$gt": datetime.datetime.utcnow()},
                 "status": MeetStatus.SCHEDULED
             }).to_list()
@@ -255,7 +271,7 @@ async def get_scheduled_sessions(
     """
     try:
         sessions = await Session.find({
-            "user_id": employee["user_id"],
+            "employee_id": employee["employee_id"],
             "scheduled_at": {"$gt": datetime.datetime.utcnow()},
             "status": SessionStatus.PENDING
         }).sort("scheduled_at").to_list()

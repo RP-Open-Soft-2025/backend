@@ -1,12 +1,14 @@
 from fastapi import FastAPI, Depends
+from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from auth.jwt_bearer import JWTBearer
 from config.config import initiate_database
-from routes.login import router as LoginRouter
+from routes.auth import router as authRouter
 from routes.admin import router as AdminRouter
 from routes.admin_hr import router as AdminHRRouter
 from routes.employee import router as EmployeeRouter
 from routes.hr import router as HRRouter
+from routes.session import router as SessionRouter
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -21,6 +23,15 @@ app = FastAPI(
     lifespan=lifespan  # Register lifespan handler
 )
 
+# Configure CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allows all origins
+    allow_credentials=True,
+    allow_methods=["*"],  # Allows all methods
+    allow_headers=["*"],  # Allows all headers
+)
+
 token_listener = JWTBearer()
 
 
@@ -31,8 +42,10 @@ async def read_root() -> dict:
 
 
 # Including routers
-app.include_router(LoginRouter, tags=["Login"], prefix="/login")
+app.include_router(authRouter,prefix="/auth", tags=["auth"])
+
 app.include_router(AdminRouter, tags=["Admin"], prefix="/admin")
 app.include_router(AdminHRRouter, tags=["Admin-HR"], prefix="/admin-hr")
 app.include_router(EmployeeRouter, tags=["Employee"], prefix="/user")
 app.include_router(HRRouter, tags=["HR"], prefix="/hr")
+app.include_router(SessionRouter, tags=["Session"], prefix="/session")

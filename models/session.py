@@ -3,7 +3,7 @@ import datetime
 from enum import Enum
 from beanie import Document
 from pydantic import BaseModel, Field
-
+import uuid
 
 class SessionStatus(str, Enum):
     PENDING = "pending"  # Yet to attend
@@ -13,7 +13,7 @@ class SessionStatus(str, Enum):
 
 
 class Session(Document):
-    session_id: str = Field(..., description="Unique identifier for the session")
+    session_id: str = Field(default_factory=lambda: f"SESS{uuid.uuid4().hex[:6].upper()}", description="Unique identifier for the session")
     user_id: str = Field(..., description="Employee ID of the user assigned to this session")
     chat_id: str = Field(..., description="ID of the chat associated with this session")
     status: SessionStatus = Field(default=SessionStatus.PENDING, description="Current status of the session")
