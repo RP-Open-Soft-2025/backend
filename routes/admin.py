@@ -61,66 +61,66 @@ async def create_chat_session(
     notes: Optional[str] = None,
     # token: str = Depends(token_listener)
 ):
-    """Create a new chat session for a specific usersdf"""
+    """Create a new chat session for a specific user"""
     try:
         # Check if user exists
         user = await Employee.find_one({"employee_id": user_id})
         
         if not user:
             raise HTTPException(status_code=404, detail=f"User with ID {user_id} not found")
-        
-        print(user)
 
         # Check if user is blocked
         if user.is_blocked:
             raise HTTPException(status_code=400, detail=f"User {user_id} is blocked")
 
+        print(f"Creating new chat for user {user_id}")
         # Create new chat
-        chat_id = ""
-        try: 
-            new_chat = Chat(
-                user_id=user_id,
-                messages=[],
-                mood_score=-1
-            )
-
-            # print the new_chat object such that is is visible, stringified
-            print("chat created", new_chat)
-
-            # chat_id = new_chat.chat_id
-        except Exception as e:
-            print("erroroccurs ", e)
+        new_chat = Chat(
+            user_id=user_id,
+            messages=[],
+            mood_score=-1
+        )
         
-        print("xchat_id: ", chat_id)
+        print(f"Attempting to save chat with ID: {new_chat.chat_id}")
+        # Save the chat document
+        try:
+            await new_chat.save()
+            print("Chat saved successfully")
+        except Exception as chat_error:
+            print(f"Error saving chat: {str(chat_error)}")
+            raise
 
-        # print(new_chat)
-
-        # await new_chat.save()
-
+        print("Creating new session")
         # Create new session
-        # new_session = Session(
-        #     user_id=user_id,
-        #     # chat_id=new_chat.chat_id,
-        #     chat_id="",
-        #     status=SessionStatus.PENDING,
-        #     scheduled_at=session_data.scheduled_at,
-        #     notes=session_data.notes
-        # )
-
-        # print(new_session)
+        new_session = Session(
+            user_id=user_id,
+            chat_id=new_chat.chat_id,
+            status=SessionStatus.PENDING,
+            scheduled_at=session_data.scheduled_at,
+            notes=session_data.notes
+        )
         
-        # await new_session.save()
+        print(f"Attempting to save session with ID: {new_session.session_id}")
+        # Save the session document
+        try:
+            await new_session.save()
+            print("Session saved successfully")
+        except Exception as session_error:
+            print(f"Error saving session: {str(session_error)}")
+            raise
         
         return CreateSessionResponse(
-            # chat_id=chat_id,
-            chat_id="",
-            # session_id=new_session.session_id,
-            session_id="",
-            message="Chat session created"
+            chat_id=new_chat.chat_id,
+            session_id=new_session.session_id,
+            message="Chat session created successfully"
         )
     except HTTPException as he:
         raise he
     except Exception as e:
+        print(f"Error creating chat session: {str(e)}")
+        print(f"Error type: {type(e)}")
+        import traceback
+        print(f"Traceback: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
