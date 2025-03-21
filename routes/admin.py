@@ -14,7 +14,6 @@ from passlib.context import CryptContext
 router = APIRouter()
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-
 class CreateUserRequest(BaseModel):
     employee_id: str = Field(..., description="Unique identifier for the employee")
     name: str = Field(..., description="Full name of the employee")
@@ -27,6 +26,25 @@ class CreateUserRequest(BaseModel):
 class DeleteUserRequest(BaseModel):
     employee_id: str = Field(..., description="ID of the employee to delete")
     reason: Optional[str] = Field(default=None, description="Reason for deleting the user")
+
+class SessionResponse(BaseModel):
+    session_id: str
+    user_id: str
+    chat_id: str
+    status: str
+    scheduled_at: datetime
+
+
+class CreateSessionRequest(BaseModel):
+    scheduled_at: datetime
+    notes: Optional[str] = None
+
+
+class CreateSessionResponse(BaseModel):
+    chat_id: str
+    session_id: str
+    message: str
+
 
 
 async def verify_admin(token: str = Depends(JWTBearer())):
@@ -149,7 +167,7 @@ async def delete_user(
         )
 
 @router.get("/chats", response_model=List[SessionResponse], tags=["Admin"])
-async def get_all_active_chats(token: str = Depends(token_listener)):
+async def get_all_active_chats(admin: dict = Depends(verify_admin)):
     """Get all active chat sessions with their session status"""
     try:
         # Get all active sessions
@@ -173,8 +191,7 @@ async def get_all_active_chats(token: str = Depends(token_listener)):
 async def create_chat_session(
     user_id: str,
     session_data: CreateSessionRequest,
-    notes: Optional[str] = None,
-    # token: str = Depends(token_listener)
+    admin: dict = Depends(verify_admin)
 ):
     """Create a new chat session for a specific user"""
     try:
