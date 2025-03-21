@@ -1,16 +1,18 @@
 # routes only for admins
 
 from fastapi import APIRouter, HTTPException, Depends
-from typing import Optional
+from typing import List, Optional
+from datetime import datetime
 from pydantic import BaseModel, EmailStr, Field
+from models.session import Session, SessionStatus
 from models.employee import Employee, Role
+from models.chat import Chat
 from auth.jwt_bearer import JWTBearer
 from auth.jwt_handler import decode_jwt
 from passlib.context import CryptContext
 
 router = APIRouter()
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
 
 class CreateUserRequest(BaseModel):
     employee_id: str = Field(..., description="Unique identifier for the employee")

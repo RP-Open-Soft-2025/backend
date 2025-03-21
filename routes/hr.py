@@ -14,7 +14,7 @@ async def block_user_hr(userId: str, token: HTTPAuthorizationCredentials = Depen
         raise HTTPException(status_code=401, detail="Unauthorised")
     
     claims_jwt = decode_jwt(token)
-    hr_user = await Employee.find_one({"employee_id": claims_jwt["user_id"], "role": Role.HR})
+    hr_user = await Employee.find_one({"employee_id": claims_jwt["employee_id"], "role": Role.HR})
 
     if not hr_user:
         return HTTPException(403, "Error HR not found")
@@ -23,7 +23,7 @@ async def block_user_hr(userId: str, token: HTTPAuthorizationCredentials = Depen
     if not emp_user:
         raise HTTPException(status_code=404, detail="Employee not found")
 
-    if emp_user.manager_id == claims_jwt["user_id"]:
+    if emp_user.manager_id == claims_jwt["employee_id"]:
         emp_user.is_blocked = True
         emp_user.blocked_by = emp_user.employee_id
         emp_user.blocked_at = datetime.datetime.now()
@@ -38,7 +38,7 @@ async def unblock_user_hr(userId: str, token: HTTPAuthorizationCredentials = Dep
         raise HTTPException(status_code=401, detail="Unauthorised")
     
     claims_jwt = decode_jwt(token)
-    hr_user = await Employee.find_one({"employee_id": claims_jwt["user_id"], "role": Role.HR})
+    hr_user = await Employee.find_one({"employee_id": claims_jwt["employee_id"], "role": Role.HR})
 
     if not hr_user:
         return HTTPException(403, "Error HR not found")
@@ -47,7 +47,7 @@ async def unblock_user_hr(userId: str, token: HTTPAuthorizationCredentials = Dep
     if not emp_user:
         raise HTTPException(status_code=404, detail="Employee not found")
 
-    if emp_user.manager_id == claims_jwt["user_id"]:
+    if emp_user.manager_id == claims_jwt["employee_id"]:
         emp_user.is_blocked = False
         emp_user.blocked_by = None
         emp_user.blocked_at = None
@@ -61,7 +61,7 @@ async def delete_user_hr(userId: str, token: HTTPAuthorizationCredentials = Depe
         raise HTTPException(status_code=401, detail="Unauthorised")
     
     claims_jwt = decode_jwt(token)
-    hr_user = await Employee.find_one({"employee_id": claims_jwt["user_id"], "role": Role.HR})
+    hr_user = await Employee.find_one({"employee_id": claims_jwt["employee_id"], "role": Role.HR})
     
     if not hr_user:
         raise HTTPException(status_code=403, detail="Error HR not found")
@@ -70,7 +70,7 @@ async def delete_user_hr(userId: str, token: HTTPAuthorizationCredentials = Depe
     if not emp_user:
         raise HTTPException(status_code=404, detail="Employee not found")
     
-    if emp_user.manager_id == claims_jwt["user_id"]:
+    if emp_user.manager_id == claims_jwt["employee_id"]:
         await emp_user.delete()
         return {"msg": f"{emp_user.employee_id} is deleted from database"}
     else:

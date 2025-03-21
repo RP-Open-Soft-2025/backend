@@ -55,11 +55,55 @@ class Activity(BaseModel):
     Meetings_Attended: int = Field(..., ge=0, description="Number of meetings attended")
     Work_Hours: float = Field(..., ge=0, description="Number of work hours")
 
+    @field_validator("Date", mode="before")
+    @classmethod
+    def parse_date(cls, v):
+        if isinstance(v, str):
+            try:
+                # Try parsing different date formats
+                if "/" in v:
+                    # Handle format like "12/12/2023"
+                    month, day, year = map(int, v.split("/"))
+                    return datetime.date(year, month, day)
+                elif "-" in v:
+                    # Handle format like "2023-12-12"
+                    return datetime.date.fromisoformat(v)
+                else:
+                    raise ValueError(f"Unsupported date format: {v}")
+            except Exception as e:
+                raise ValueError(f"Invalid date format: {v}. Error: {str(e)}")
+        elif isinstance(v, datetime.date):
+            return v
+        elif isinstance(v, datetime.datetime):
+            return v.date()
+        raise ValueError(f"Invalid date type: {type(v)}")
+
+
 class Leave(BaseModel):
     Leave_Type: LeaveType = Field(..., description="Type of leave taken")
     Leave_Days: int = Field(..., ge=1, description="Number of leave days")
     Leave_Start_Date: datetime.date = Field(..., description="Start date of the leave")
     Leave_End_Date: datetime.date = Field(..., description="End date of the leave")
+
+    @field_validator("Leave_Start_Date", "Leave_End_Date", mode="before")
+    @classmethod
+    def parse_date(cls, v):
+        if isinstance(v, str):
+            try:
+                if "/" in v:
+                    month, day, year = map(int, v.split("/"))
+                    return datetime.date(year, month, day)
+                elif "-" in v:
+                    return datetime.date.fromisoformat(v)
+                else:
+                    raise ValueError(f"Unsupported date format: {v}")
+            except Exception as e:
+                raise ValueError(f"Invalid date format: {v}. Error: {str(e)}")
+        elif isinstance(v, datetime.date):
+            return v
+        elif isinstance(v, datetime.datetime):
+            return v.date()
+        raise ValueError(f"Invalid date type: {type(v)}")
 
 
 class Onboarding(BaseModel):
@@ -67,6 +111,26 @@ class Onboarding(BaseModel):
     Onboarding_Feedback: OnboardingFeedback = Field(..., description="Feedback on onboarding experience")
     Mentor_Assigned: bool = Field(..., description="Whether a mentor was assigned")
     Initial_Training_Completed: bool = Field(..., description="Whether initial training was completed")
+
+    @field_validator("Joining_Date", mode="before")
+    @classmethod
+    def parse_date(cls, v):
+        if isinstance(v, str):
+            try:
+                if "/" in v:
+                    month, day, year = map(int, v.split("/"))
+                    return datetime.date(year, month, day)
+                elif "-" in v:
+                    return datetime.date.fromisoformat(v)
+                else:
+                    raise ValueError(f"Unsupported date format: {v}")
+            except Exception as e:
+                raise ValueError(f"Invalid date format: {v}. Error: {str(e)}")
+        elif isinstance(v, datetime.date):
+            return v
+        elif isinstance(v, datetime.datetime):
+            return v.date()
+        raise ValueError(f"Invalid date type: {type(v)}")
 
 
 class Performance(BaseModel):
@@ -81,29 +145,75 @@ class Reward(BaseModel):
     Award_Date: datetime.date = Field(..., description="Date of the award")
     Reward_Points: int = Field(..., ge=0, description="Points awarded for the reward")
 
+    @field_validator("Award_Date", mode="before")
+    @classmethod
+    def parse_date(cls, v):
+        if isinstance(v, str):
+            try:
+                if "/" in v:
+                    month, day, year = map(int, v.split("/"))
+                    return datetime.date(year, month, day)
+                elif "-" in v:
+                    return datetime.date.fromisoformat(v)
+                else:
+                    raise ValueError(f"Unsupported date format: {v}")
+            except Exception as e:
+                raise ValueError(f"Invalid date format: {v}. Error: {str(e)}")
+        elif isinstance(v, datetime.date):
+            return v
+        elif isinstance(v, datetime.datetime):
+            return v.date()
+        raise ValueError(f"Invalid date type: {type(v)}")
+
 
 class VibeMeter(BaseModel):
     Response_Date: datetime.date = Field(..., description="Date of the vibe response")
     Vibe_Score: int = Field(..., ge=1, le=6, description="Score indicating the employee's vibe, from 1 to 6")
     Emotion_Zone: EmotionZone = Field(..., description="Emotional zone based on the vibe score")
 
+    @field_validator("Response_Date", mode="before")
+    @classmethod
+    def parse_date(cls, v):
+        if isinstance(v, str):
+            try:
+                if "/" in v:
+                    month, day, year = map(int, v.split("/"))
+                    return datetime.date(year, month, day)
+                elif "-" in v:
+                    return datetime.date.fromisoformat(v)
+                else:
+                    raise ValueError(f"Unsupported date format: {v}")
+            except Exception as e:
+                raise ValueError(f"Invalid date format: {v}. Error: {str(e)}")
+        elif isinstance(v, datetime.date):
+            return v
+        elif isinstance(v, datetime.datetime):
+            return v.date()
+        raise ValueError(f"Invalid date type: {type(v)}")
+
 
 class CompanyData(BaseModel):
-    activity: Optional[List[Optional[Activity]]] = Field(default=None, description="Employee activity data")
-    leave: Optional[List[Optional[Leave]]] = Field(default=None, description="Employee leave data")
-    onboarding: Optional[List[Optional[Onboarding]]] = Field(default=None, description="Employee onboarding data")
-    performance: Optional[List[Optional[Performance]]] = Field(default=None, description="Employee performance data")
-    rewards: Optional[List[Optional[Reward]]] = Field(default=None, description="Employee rewards data")
-    vibemeter: Optional[List[Optional[VibeMeter]]] = Field(default=None, description="Employee vibemeter data")
+    activity: List[Activity] = Field(default_factory=list, description="Employee activity data")
+    leave: List[Leave] = Field(default_factory=list, description="Employee leave data")
+    onboarding: List[Onboarding] = Field(default_factory=list, description="Employee onboarding data")
+    performance: List[Performance] = Field(default_factory=list, description="Employee performance data")
+    rewards: List[Reward] = Field(default_factory=list, description="Employee rewards data")
+    vibemeter: List[VibeMeter] = Field(default_factory=list, description="Employee vibemeter data")
 
 
 class Employee(Document):
     employee_id: str = Field(..., description="Unique identifier for the employee")
+    name: str = Field(..., description="Full name of the employee")
     email: str = Field(..., description="Employee email address")
     password: str = Field(..., description="Employee password (hashed)")
     role: Role = Field(..., description="User role in the system")
     manager_id: Optional[str] = Field(default=None, description="ID of the employee's manager")
-    company_data: Optional[CompanyData] = Field(default=None, description="Company related data for the employee")
+    is_blocked: bool = Field(default=False, description="Whether the employee is blocked")
+    blocked_at: Optional[datetime.datetime] = Field(default=None, description="Timestamp when the employee was blocked")
+    blocked_by: Optional[str] = Field(default=None, description="Employee ID of who blocked this employee")
+    blocked_reason: Optional[str] = Field(default=None, description="Reason for blocking the employee")
+    company_data: CompanyData = Field(default_factory=CompanyData, description="Company related data for the employee")
+    account_activated: bool = Field(default=False, description="Whether the employee's account is activated")
     
     @field_validator("employee_id")
     @classmethod
@@ -116,10 +226,14 @@ class Employee(Document):
         json_schema_extra = {
             "example": {
                 "employee_id": "EMP0001",
+                "name": "John Doe",
                 "email": "EMP0001@gmail.com",
                 "password": "password",
                 "role": "employee",
                 "manager_id": "EMP1001",
+                "is_blocked": False,
+                "blocked_at": None,
+                "blocked_by": None,
                 "company_data": {
                     "activity": [
                         {
