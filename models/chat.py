@@ -32,10 +32,6 @@ class Chat(Document):
             [("mood_score", 1)],
         ]
 
-    # def __init__(self):
-    #     print("Chat intialized: ")
-    #     # print the params for the initialized chat
-    #     print(self)
 
     class Config:
         json_schema_extra = {
@@ -60,27 +56,27 @@ class Chat(Document):
             }
         }
     
-    # @classmethod
-    # async def get_chat_by_id(cls, chat_id: str):
-    #     return await cls.find_one({"chat_id": chat_id})
+    @classmethod
+    async def get_chat_by_id(cls, chat_id: str):
+        return await cls.find_one({"chat_id": chat_id})
 
-    # @classmethod
-    # async def get_chats_by_user(cls, user_id: str):
-    #     return await cls.find({"user_id": user_id}).to_list()
+    @classmethod
+    async def get_chats_by_user(cls, user_id: str):
+        return await cls.find({"user_id": user_id}).to_list()
 
-    # @classmethod
-    # async def get_chats_by_mood_score(cls, mood_score: int):
-    #     return await cls.find({"mood_score": mood_score}).to_list()
+    @classmethod
+    async def get_chats_by_mood_score(cls, mood_score: int):
+        return await cls.find({"mood_score": mood_score}).to_list()
 
-    # async def add_message(self, sender_type: SenderType, text: str):
-    #     message = Message(sender_type=sender_type, text=text)
-    #     self.messages.append(message)
-    #     self.updated_at = datetime.datetime.utcnow()
-    #     await self.save()
+    async def add_message(self, sender_type: SenderType, text: str):
+        message = Message(sender_type=sender_type, text=text)
+        self.messages.append(message)
+        self.updated_at = datetime.datetime.utcnow()
+        await self.save()
 
-    # async def set_mood_score(self, score: int):
-    #     if not -1 <= score <= 6:
-    #         raise ValueError("Mood score must be between -1 and 6")
-    #     self.mood_score = score
-    #     self.updated_at = datetime.datetime.utcnow()
-    #     await self.save() 
+    async def set_mood_score(self, score: int):
+        if not -1 <= score <= 6:
+            raise ValueError("Mood score must be between -1 and 6")
+        self.mood_score = score
+        self.updated_at = datetime.datetime.utcnow()
+        await self.save() 
