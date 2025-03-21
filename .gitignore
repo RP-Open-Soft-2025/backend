@@ -133,4 +133,6 @@ dmypy.json
 
 #employee data
 employee_data.json
+employee_data_sample.json
 setup_data.py
+setup_test.py
