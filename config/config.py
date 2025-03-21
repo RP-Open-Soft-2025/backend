@@ -9,7 +9,8 @@ import models as models
 class Settings(BaseSettings):
     # database configurations
     DATABASE_URL: Optional[str] = None
-
+    sender_email: str = "fill sender_email .env.dev"
+    sender_password:str = "fill sender_password .env.dev"
     # JWT
     secret_key: str = "secret"
     algorithm: str = "HS256"
