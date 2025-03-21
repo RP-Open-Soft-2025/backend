@@ -28,6 +28,19 @@ class DeleteUserRequest(BaseModel):
     reason: Optional[str] = Field(default=None, description="Reason for deleting the user")
 
 
+class CreateSessionRequest(BaseModel):
+    scheduled_at: datetime = Field(..., description="When the session is scheduled for")
+    notes: Optional[str] = Field(default=None, description="Any additional notes about the session")
+
+
+class SessionResponse(BaseModel):
+    session_id: str
+    employee_id: str
+    chat_id: str
+    status: str
+    scheduled_at: datetime
+
+
 class ReassignHrRequest(BaseModel):
     newHrId: str = Field(..., description="ID of the new HR to assign")
 
@@ -150,6 +163,79 @@ async def delete_user(
             status_code=500,
             detail=f"Error deleting user: {str(e)}"
         )
+
+
+@router.post("/session/{user_id}", tags=["Admin"])
+async def create_session(
+    user_id: str,
+    session_data: CreateSessionRequest,
+    admin: dict = Depends(verify_admin)
+):
+    """
+    Create a new session for an employee.
+    Only administrators can access this endpoint.
+    """
+    # Verify the employee exists
+    employee = await Employee.get_by_id(user_id)
+    if not employee:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Employee with ID {user_id} not found"
+        )
+
+    # Create a new chat for the session
+    chat = Chat(user_id=user_id)
+    await chat.save()
+
+    # Create a new session
+    session = Session(
+        user_id=user_id,
+        chat_id=chat.chat_id,
+        scheduled_at=session_data.scheduled_at,
+        notes=session_data.notes
+    )
+    await session.save()
+
+    return {
+        "message": "Chat has created successfully",
+        "chat_id": chat.chat_id,
+        "session_id": session.session_id
+    }
+
+
+@router.get("/sessions", response_model=List[SessionResponse], tags=["Admin"])
+async def get_all_sessions(admin: dict = Depends(verify_admin)):
+    """
+    Get all sessions in the system.
+    Only administrators can access this endpoint.
+    Returns a list of all sessions with their details.
+    """
+    try:
+        # Get all sessions
+        sessions = await Session.get_all()
+        
+        # Convert sessions to response format
+        session_responses = [
+            SessionResponse(
+                session_id=session.session_id,
+                employee_id=session.user_id,
+                chat_id=session.chat_id,
+                status=session.status.value,
+                scheduled_at=session.scheduled_at
+            )
+            for session in sessions
+        ]
+        
+        return session_responses
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error fetching sessions: {str(e)}"
+        )
+    
+
+
+
 
 
 @router.get("/list-users", tags=["Admin"])
