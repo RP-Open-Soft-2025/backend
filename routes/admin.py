@@ -146,3 +146,5 @@ async def delete_user(
             status_code=500,
             detail=f"Error deleting user: {str(e)}"
         )
+
+
