@@ -3,7 +3,7 @@ import datetime
 from enum import Enum
 from beanie import Document
 from pydantic import BaseModel, Field
-
+import uuid
 
 class SenderType(str, Enum):
     BOT = "bot"
@@ -17,6 +17,7 @@ class Message(BaseModel):
 
 
 class Chat(Document):
+    chat_id: str = Field(default_factory=lambda: f"CHAT{uuid.uuid4().hex[:6].upper()}", description="Unique identifier for the chat")
     user_id: str = Field(..., description="Employee ID of the user associated with this chat")
     messages: List[Message] = Field(default_factory=list, description="List of messages in the chat")
     mood_score: int = Field(default=-1, ge=-1, le=6, description="Mood score assigned at the end of chat (-1 for unassigned, 1-6 for actual score)")
@@ -28,12 +29,18 @@ class Chat(Document):
         indexes = [
             [("user_id", 1)],
             [("created_at", 1)],
-            [("mood_score", 1)]
+            [("mood_score", 1)],
         ]
+
+    # def __init__(self):
+    #     print("Chat intialized: ")
+    #     # print the params for the initialized chat
+    #     print(self)
 
     class Config:
         json_schema_extra = {
             "example": {
+                "chat_id": "CHAT001",
                 "user_id": "EMP0001",
                 "messages": [
                     {
@@ -52,24 +59,28 @@ class Chat(Document):
                 "updated_at": "2024-03-20T10:35:00Z"
             }
         }
+    
+    # @classmethod
+    # async def get_chat_by_id(cls, chat_id: str):
+    #     return await cls.find_one({"chat_id": chat_id})
 
-    @classmethod
-    async def get_chats_by_user(cls, user_id: str):
-        return await cls.find({"user_id": user_id}).to_list()
+    # @classmethod
+    # async def get_chats_by_user(cls, user_id: str):
+    #     return await cls.find({"user_id": user_id}).to_list()
 
-    @classmethod
-    async def get_chats_by_mood_score(cls, mood_score: int):
-        return await cls.find({"mood_score": mood_score}).to_list()
+    # @classmethod
+    # async def get_chats_by_mood_score(cls, mood_score: int):
+    #     return await cls.find({"mood_score": mood_score}).to_list()
 
-    async def add_message(self, sender_type: SenderType, text: str):
-        message = Message(sender_type=sender_type, text=text)
-        self.messages.append(message)
-        self.updated_at = datetime.datetime.utcnow()
-        await self.save()
+    # async def add_message(self, sender_type: SenderType, text: str):
+    #     message = Message(sender_type=sender_type, text=text)
+    #     self.messages.append(message)
+    #     self.updated_at = datetime.datetime.utcnow()
+    #     await self.save()
 
-    async def set_mood_score(self, score: int):
-        if not -1 <= score <= 6:
-            raise ValueError("Mood score must be between -1 and 6")
-        self.mood_score = score
-        self.updated_at = datetime.datetime.utcnow()
-        await self.save() 
+    # async def set_mood_score(self, score: int):
+    #     if not -1 <= score <= 6:
+    #         raise ValueError("Mood score must be between -1 and 6")
+    #     self.mood_score = score
+    #     self.updated_at = datetime.datetime.utcnow()
+    #     await self.save() 
