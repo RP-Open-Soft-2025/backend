@@ -15,7 +15,7 @@ async def forgot_password(forgot_password_request: ForgotPasswordRequest = Body(
         reset_token = str(uuid.uuid4())
         reset_tokens[reset_token] = user_exists.email
         
-        print("Current reset tokens:", reset_tokens)  # ✅ Debug: Verify token storage
+        # print("Current reset tokens:", reset_tokens)  # ✅ Debug: Verify token storage
 
         reset_link = f"http://127.0.0.1:8086/auth/reset-password/{reset_token}"
         await send_email(user_exists.email, reset_link)
