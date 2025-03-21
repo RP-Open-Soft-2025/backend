@@ -10,6 +10,21 @@ from routes.employee import router as EmployeeRouter
 from routes.hr import router as HRRouter
 from routes.session import router as SessionRouter
 
+from fastapi.middleware.cors import CORSMiddleware
+from middleware import AuthMiddleware
+
+app = FastAPI()
+
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.add_middleware(AuthMiddleware)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifespan event to initialize resources like the database."""
