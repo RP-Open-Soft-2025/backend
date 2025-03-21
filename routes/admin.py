@@ -29,7 +29,7 @@ class DeleteUserRequest(BaseModel):
 
 
 class CreateSessionRequest(BaseModel):
-    scheduled_at: datetime.datetime = Field(..., description="When the session is scheduled for")
+    scheduled_at: datetime = Field(..., description="When the session is scheduled for")
     notes: Optional[str] = Field(default=None, description="Any additional notes about the session")
 
 
@@ -38,7 +38,7 @@ class SessionResponse(BaseModel):
     employee_id: str
     chat_id: str
     status: str
-    scheduled_at: datetime.datetime
+    scheduled_at: datetime
 
 
 async def verify_admin(token: str = Depends(JWTBearer())):
