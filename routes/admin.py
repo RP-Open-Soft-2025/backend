@@ -144,3 +144,47 @@ async def delete_user(
             status_code=500,
             detail=f"Error deleting user: {str(e)}"
         )
+
+
+@router.get("/list-users", tags=["Admin"])
+async def list_users(admin: dict = Depends(verify_admin)):
+    """
+    Get a list of all users with their session data.
+    Only administrators can access this endpoint.
+    """
+    try:
+        # Get all employees
+        employees = await Employee.find_all().to_list()
+        
+        # Format the response
+        users = []
+        for employee in employees:
+            # Get the latest vibe meter entry for session data
+            latest_vibe = None
+            if employee.company_data.vibemeter:
+                latest_vibe = employee.company_data.vibemeter[-1]
+            
+            user_data = {
+                "userId": employee.employee_id,
+                "name": employee.name,
+                "email": employee.email,
+                "role": employee.role,
+                "status": "active" if not employee.is_blocked else "blocked",
+                "sessionData": {
+                    "moodScores": [
+                        {
+                            "timestamp": vibe.Response_Date.isoformat(),
+                            "score": vibe.Vibe_Score
+                        }
+                        for vibe in employee.company_data.vibemeter
+                    ]
+                }
+            }
+            users.append(user_data)
+        
+        return {"users": users}
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error fetching users: {str(e)}"
+        )
