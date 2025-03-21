@@ -28,6 +28,10 @@ class DeleteUserRequest(BaseModel):
     reason: Optional[str] = Field(default=None, description="Reason for deleting the user")
 
 
+class ReassignHrRequest(BaseModel):
+    newHrId: str = Field(..., description="ID of the new HR to assign")
+
+
 async def verify_admin(token: str = Depends(JWTBearer())):
     """Verify that the user is an admin."""
     payload = decode_jwt(token)
@@ -189,4 +193,85 @@ async def list_users(admin: dict = Depends(verify_admin)):
         raise HTTPException(
             status_code=500,
             detail=f"Error fetching users: {str(e)}"
+        )
+
+
+@router.patch("/reassign-hr/{userId}", tags=["Admin"])
+async def reassign_hr(
+    userId: str,
+    reassign_data: ReassignHrRequest,
+    admin: dict = Depends(verify_admin)
+):
+    """
+    Reassign HR for an existing user.
+    Only administrators can access this endpoint.
+    """
+    # Get the employee to reassign
+    employee = await Employee.get_by_id(userId)
+    if not employee:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Employee with ID {userId} not found"
+        )
+
+    # Get the new HR
+    new_hr = await Employee.get_by_id(reassign_data.newHrId)
+    if not new_hr:
+        raise HTTPException(
+            status_code=404,
+            detail=f"New HR with ID {reassign_data.newHrId} not found"
+        )
+
+    # Verify the new HR is actually an HR
+    if new_hr.role != Role.HR:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Employee {reassign_data.newHrId} is not an HR personnel"
+        )
+
+    try:
+        # Update the manager_id
+        employee.manager_id = reassign_data.newHrId
+        await employee.save()
+        
+        return {
+            "message": "HR reassigned successfully",
+            "userId": userId,
+            "newHrId": reassign_data.newHrId
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error reassigning HR: {str(e)}"
+        )
+
+
+@router.get("/list-hr", tags=["Admin"])
+async def list_hr(admin: dict = Depends(verify_admin)):
+    """
+    Get a list of all HR personnel with their current workload.
+    Only administrators can access this endpoint.
+    """
+    try:
+        # Get all HR personnel
+        hr_personnel = await Employee.find({"role": Role.HR}).to_list()
+        
+        # Format the response
+        hrs = []
+        for hr in hr_personnel:
+            # Count assigned users
+            assigned_users = await Employee.find({"manager_id": hr.employee_id}).count()
+            
+            hr_data = {
+                "hrId": hr.employee_id,
+                "name": hr.name,
+                "currentAssignedUsers": assigned_users
+            }
+            hrs.append(hr_data)
+        
+        return {"hrs": hrs}
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error fetching HR list: {str(e)}"
         )
