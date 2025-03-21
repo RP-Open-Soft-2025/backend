@@ -15,7 +15,7 @@ secret_key = Settings().secret_key
 
 
 def sign_jwt(user_id: str, role: str, email: str) -> Dict[str, str]:
-    expiry = datetime.utcnow() + timedelta(seconds=15)  
+    expiry = datetime.utcnow() + timedelta(seconds=5)  
     payload = {
         "sub": user_id,
         "email": email,

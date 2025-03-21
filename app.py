@@ -64,3 +64,4 @@ app.include_router(AdminHRRouter, tags=["Admin-HR"], prefix="/admin-hr")
 app.include_router(EmployeeRouter, tags=["Employee"], prefix="/user")
 app.include_router(HRRouter, tags=["HR"], prefix="/hr")
 app.include_router(SessionRouter, tags=["Session"], prefix="/session")
+

@@ -1,25 +1,27 @@
-from fastapi import Request, Response
-from jose import JWTError, jwt, ExpiredSignatureError
+from fastapi import FastAPI, Request, Response, Depends
+from jose import JWTError, jwt
 from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import JSONResponse
 from auth.jwt_handler import sign_jwt
-from models import Employee  
+from models import Employee
 from config.config import Settings
+
+app = FastAPI()
 
 secret_key = Settings().secret_key
 
 class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
+        """Middleware to automatically refresh JWT access token when expired."""
         response = await call_next(request)  
 
-        auth_header = request.headers.get("Authorization")
-        if not auth_header or not auth_header.startswith("Bearer "):
-            return response 
-
-        access_token = auth_header.split(" ")[1]
+        access_token = request.cookies.get("access_token")
+        if not access_token:
+            return response  
 
         try:
             jwt.decode(access_token, secret_key, algorithms=["HS256"])
-        except ExpiredSignatureError:
+        except JWTError:
             refresh_token = request.cookies.get("refresh_token")
             if refresh_token:
                 try:
@@ -30,14 +32,22 @@ class AuthMiddleware(BaseHTTPMiddleware):
                     if not user_exists:
                         return response  
 
-                
                     new_access_token = sign_jwt(user_exists.employee_id, user_exists.role, user_exists.email)
 
-        
-                    response.headers["Authorization"] = f"Bearer {new_access_token}"
+                    response.set_cookie(
+                        key="access_token",
+                        value=new_access_token,
+                        httponly=True,
+                        secure=True,  
+                        samesite="None",
+                        max_age=5,  
+                    )
 
-                except ExpiredSignatureError:
-                    response.delete_cookie("refresh_token")
+                except JWTError:
+                    pass  
 
         return response  
+
+
+
 
