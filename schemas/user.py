@@ -5,11 +5,13 @@ from typing import Optional
 from models.employee import CompanyData, Role
 from fastapi.security import HTTPBasicCredentials
 
-class EmployeeSignIn(HTTPBasicCredentials):
+class EmployeeSignIn(BaseModel):
+    employee_id : str
+    password : str
     class Config:
         json_schema_extra = {
             "example": {
-                "username": "EMP0001",
+                "employee_id": "EMP0001",
                 "password": "password"
             }
         }
