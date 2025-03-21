@@ -9,6 +9,7 @@ from routes.admin_hr import router as AdminHRRouter
 from routes.employee import router as EmployeeRouter
 from routes.hr import router as HRRouter
 from routes.session import router as SessionRouter
+from routes.chat import router as ChatRouter
 
 from fastapi.middleware.cors import CORSMiddleware
 from middleware import AuthMiddleware
@@ -64,3 +65,4 @@ app.include_router(AdminHRRouter, tags=["Admin-HR"], prefix="/admin-hr")
 app.include_router(EmployeeRouter, tags=["Employee"], prefix="/user")
 app.include_router(HRRouter, tags=["HR"], prefix="/hr")
 app.include_router(SessionRouter, tags=["Session"], prefix="/session")
+app.include_router(ChatRouter, tags=["chat"],prefix="/llm/chat")
