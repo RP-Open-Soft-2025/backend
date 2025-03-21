@@ -16,7 +16,7 @@ async def user_login(user_credentials: EmployeeSignIn = Body(...)):
     if user_exists:
         password = hash_helper.verify(user_credentials.password, user_exists.password)
         if password:
-            return sign_jwt(user_credentials.employee_id)
+            return sign_jwt(user_credentials.employee_id, user_exists.role)
 
         raise HTTPException(status_code=403, detail="Incorrect employee ID or password")
 
