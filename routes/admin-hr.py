@@ -1,1 +1,0 @@
-# routes common to admin and hr

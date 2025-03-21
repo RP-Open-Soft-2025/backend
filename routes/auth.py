@@ -2,17 +2,20 @@ from fastapi import APIRouter, Body, HTTPException, Response, Request
 from passlib.context import CryptContext
 from auth.jwt_handler import sign_jwt, refresh_jwt
 from models.employee import Employee
-from schemas.user import EmployeeSignIn
+from schemas.user import EmployeeSignIn, ResetPasswordRequest, ForgotPasswordRequest, ForgotPasswordResponse
+from utils.utils import send_email
+import uuid
+from config.config import Settings
 from fastapi.responses import JSONResponse
 from jose import JWTError, jwt, ExpiredSignatureError
-from config.config import Settings
 from fastapi import Depends
-from fastapi.security import OAuth2PasswordBearer
 
 secret_key = Settings().secret_key
-
 router = APIRouter()
 hash_helper = CryptContext(schemes=["bcrypt"])
+reset_tokens = {}
+
+# Login Route
 
 @router.post("/login")
 async def user_login(user_credentials: EmployeeSignIn = Body(...)):
@@ -64,7 +67,35 @@ async def refresh_access_token(request: Request, response: Response):
         response.delete_cookie("refresh_token")  
         raise HTTPException(status_code=401, detail="Refresh token expired. Please log in again.")
 
-
-
+# Forgot Password Route
+@router.post("/forgot-password")
+async def forgot_password(forgot_password_request: ForgotPasswordRequest = Body(...)):
+    user_exists = await Employee.find_one(Employee.email == forgot_password_request.email)
+    if not user_exists:
+        raise HTTPException(status_code=404, detail="User not found")
     
+    reset_token = str(uuid.uuid4())
+    reset_tokens[reset_token] = user_exists.email
+    reset_link = f"http://127.0.0.1:8080/auth/reset-password/{reset_token}"
+    await send_email(user_exists.email, reset_link)
+    return ForgotPasswordResponse(message="Password reset link sent to your email.")
 
+# Reset Password Route
+@router.post("/reset-password/{reset_token}")
+async def reset_password(reset_token: str, request_data: ResetPasswordRequest):
+    email = reset_tokens.get(reset_token)
+    if not email:
+        raise HTTPException(status_code=400, detail="Invalid or expired token")
+    
+    user = await Employee.find_one(Employee.email == email)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    if hash_helper.verify(request_data.new_password, user.password):
+        raise HTTPException(status_code=400, detail="New password cannot be the same as the old password.")
+    
+    user.password = hash_helper.hash(request_data.new_password)
+    await user.save()
+
+    del reset_tokens[reset_token]
+    return {"message": "Password reset successful"}
