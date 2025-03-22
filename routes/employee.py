@@ -1,11 +1,11 @@
 # routes only for employee
 
-from fastapi import APIRouter, HTTPException, Depends
-from typing import List, Optional
+from fastapi import APIRouter, HTTPException, Depends, WebSocket, WebSocketDisconnect
+from typing import List, Optional, Dict, Any, Set
 from pydantic import BaseModel, Field
 from models.meet import Meet, MeetStatus
 from models.session import Session, SessionStatus
-from models.chat import Chat
+from models.chat import Chat, Message, SenderType
 from models.employee import Employee, EmotionZone
 from auth.jwt_bearer import JWTBearer
 from auth.jwt_handler import decode_jwt
@@ -74,10 +74,18 @@ class MoodScoreStats(BaseModel):
 
 
 class ChatSummary(BaseModel):
-    total_chats: int = 0
-    average_mood_score: float = 0.0
-    last_chat_date: Optional[datetime.datetime] = None
+    chat_id: str
+    last_message: Optional[str] = None
+    last_message_time: Optional[datetime.datetime] = None
+    unread_count: int = 0
     total_messages: int = 0
+    chat_mode: str
+    is_escalated: bool = False
+
+
+class EmployeeChatsResponse(BaseModel):
+    chats: List[ChatSummary]
+    total_chats: int
 
 
 class UserDetails(BaseModel):
@@ -92,6 +100,14 @@ class UserDetails(BaseModel):
     upcoming_meets: int = 0
     upcoming_sessions: int = 0
     company_data: Optional[dict] = None
+
+class ChatMessagesResponse(BaseModel):
+    chat_id: str
+    messages: List[Message]
+    total_messages: int
+    last_updated: datetime.datetime
+    chat_mode: str
+    is_escalated: bool = False
 
 
 @router.get("/profile", response_model=UserDetails, tags=["Employee"])
@@ -169,10 +185,13 @@ async def get_user_profile(
                 last_chat = max(chats, key=lambda x: x.updated_at) if chats else None
                 
                 response.chat_summary = ChatSummary(
-                    total_chats=len(chats),
-                    average_mood_score=response.mood_stats.average_score,
-                    last_chat_date=last_chat.updated_at if last_chat else None,
-                    total_messages=total_messages
+                    chat_id=last_chat.chat_id if last_chat else "",
+                    last_message=last_chat.messages[-1].text if last_chat and last_chat.messages else None,
+                    last_message_time=last_chat.updated_at if last_chat else None,
+                    unread_count=last_chat.unread_count if hasattr(last_chat, 'unread_count') else 0,
+                    total_messages=total_messages,
+                    chat_mode=last_chat.chat_mode.value if hasattr(last_chat, 'chat_mode') else "BOT",
+                    is_escalated=last_chat.is_escalated if hasattr(last_chat, 'is_escalated') else False
                 )
         except Exception as e:
             # If there's an error getting chat data, continue with default values
@@ -271,8 +290,8 @@ async def get_scheduled_sessions(
     """
     try:
         sessions = await Session.find({
-            "employee_id": employee["employee_id"],
-            "scheduled_at": {"$gt": datetime.datetime.utcnow()},
+            "user_id": employee["employee_id"],
+            # "scheduled_at": {"$gt": datetime.datetime.utcnow()},
             "status": SessionStatus.PENDING
         }).sort("scheduled_at").to_list()
 
@@ -281,3 +300,139 @@ async def get_scheduled_sessions(
     except Exception as e:
         print(f"Error in get_scheduled_sessions: {str(e)}")
         return []  # Return empty list instead of raising error
+
+
+# Add WebSocket connection manager for employee chats
+class EmployeeChatManager:
+    def __init__(self):
+        self.active_connections: Dict[str, Set[WebSocket]] = {}
+
+    async def connect(self, websocket: WebSocket, employee_id: str):
+        await websocket.accept()
+        if employee_id not in self.active_connections:
+            self.active_connections[employee_id] = set()
+        self.active_connections[employee_id].add(websocket)
+
+    def disconnect(self, websocket: WebSocket, employee_id: str):
+        if employee_id in self.active_connections:
+            self.active_connections[employee_id].remove(websocket)
+            if not self.active_connections[employee_id]:
+                del self.active_connections[employee_id]
+
+    async def broadcast_to_employee(self, employee_id: str, message: Dict[str, Any]):
+        if employee_id in self.active_connections:
+            for connection in self.active_connections[employee_id]:
+                await connection.send_json(message)
+
+employee_chat_manager = EmployeeChatManager()
+
+@router.websocket("/ws/chats/{employee_id}")
+async def employee_chats_websocket(websocket: WebSocket, employee_id: str):
+    """
+    WebSocket endpoint for real-time employee chat updates.
+    """
+    await employee_chat_manager.connect(websocket, employee_id)
+    try:
+        while True:
+            data = await websocket.receive_text()
+            # Handle incoming messages if needed
+            # For now, we'll just keep the connection alive
+    except WebSocketDisconnect:
+        employee_chat_manager.disconnect(websocket, employee_id)
+
+@router.get("/chats", response_model=EmployeeChatsResponse, tags=["Employee"])
+async def get_employee_chats(
+    employee: dict = Depends(verify_employee)
+):
+    """
+    Get all chats for the current employee with real-time updates.
+    Returns a summary of each chat including:
+    - Last message
+    - Last message time
+    - Unread message count
+    - Total messages
+    - Chat mode
+    - Escalation status
+    """
+    try:
+        # Get all chats for the employee
+        chats = await Chat.find({"user_id": employee["employee_id"]}).to_list()
+        
+        chat_summaries = []
+        for chat in chats:
+            # Get the last message if any
+            last_message = None
+            last_message_time = None
+            if chat.messages:
+                last_message = chat.messages[-1].text
+                last_message_time = chat.messages[-1].timestamp
+            
+            # Create chat summary
+            summary = ChatSummary(
+                chat_id=chat.chat_id,
+                last_message=last_message,
+                last_message_time=last_message_time,
+                unread_count=chat.unread_count if hasattr(chat, 'unread_count') else 0,
+                total_messages=len(chat.messages),
+                chat_mode=chat.chat_mode.value if hasattr(chat, 'chat_mode') else "BOT",
+                is_escalated=chat.is_escalated if hasattr(chat, 'is_escalated') else False
+            )
+            chat_summaries.append(summary)
+        
+        # Sort chats by last message time (most recent first)
+        chat_summaries.sort(key=lambda x: x.last_message_time or datetime.datetime.min, reverse=True)
+        
+        # Broadcast that the employee is viewing their chats
+        await employee_chat_manager.broadcast_to_employee(employee["employee_id"], {
+            "type": "chats_viewed",
+            "timestamp": datetime.datetime.now().isoformat(),
+            "total_chats": len(chat_summaries)
+        })
+        
+        return EmployeeChatsResponse(
+            chats=chat_summaries,
+            total_chats=len(chat_summaries)
+        )
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error fetching employee chats: {str(e)}"
+        )
+
+@router.get("/chats/{chat_id}/messages", response_model=ChatMessagesResponse, tags=["Employee"])
+async def get_chat_messages(
+    chat_id: str,
+    employee: dict = Depends(verify_employee)
+):
+    """
+    Get all messages for a specific chat.
+    Only accessible to the employee who owns the chat.
+    """
+    # Get the chat
+    chat = await Chat.get_chat_by_id(chat_id)
+    if not chat:
+        raise HTTPException(status_code=404, detail="Chat not found")
+    
+    # Verify the employee owns this chat
+    if chat.user_id != employee["employee_id"]:
+        raise HTTPException(
+            status_code=403,
+            detail="You can only access your own chats"
+        )
+    
+    # Broadcast that the employee is viewing the chat
+    await employee_chat_manager.broadcast_to_employee(employee["employee_id"], {
+        "type": "chat_viewed",
+        "chat_id": chat_id,
+        "timestamp": datetime.datetime.now().isoformat()
+    })
+    
+    return ChatMessagesResponse(
+        chat_id=chat.chat_id,
+        messages=chat.messages,
+        total_messages=len(chat.messages),
+        last_updated=chat.updated_at,
+        chat_mode=chat.chat_mode.value if hasattr(chat, 'chat_mode') else "BOT",
+        is_escalated=chat.is_escalated if hasattr(chat, 'is_escalated') else False
+    )
