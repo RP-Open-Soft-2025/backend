@@ -13,7 +13,7 @@ secret_key = Settings().secret_key
 
 
 def sign_jwt(employee_id: str, role: str, email: str) -> Dict[str, str]:
-    expiry = datetime.utcnow() + timedelta(days=2)  
+    expiry = datetime.utcnow() + timedelta(seconds=15)  
     payload = {
         "employee_id": employee_id,
         "email": email,
@@ -45,7 +45,7 @@ def decode_jwt(token: str) -> dict:
 
 
 def refresh_jwt(employee_id: str, email: str):
-    expiration = datetime.utcnow() + timedelta(days=7)  
+    expiration = datetime.utcnow() + timedelta(seconds=60)  
     payload = {"employee_id": employee_id, "email": email, "exp": expiration}
     
     try:

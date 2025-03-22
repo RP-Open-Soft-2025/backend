@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Body, HTTPException, Response, Request
+from fastapi import APIRouter, Body, HTTPException
 from passlib.context import CryptContext
 from auth.jwt_handler import sign_jwt, refresh_jwt
 from models.employee import Employee
@@ -7,8 +7,6 @@ from utils.utils import send_email
 import uuid
 from config.config import Settings
 from fastapi.responses import JSONResponse
-from jose import JWTError, jwt, ExpiredSignatureError
-from fastapi import Depends
 
 secret_key = Settings().secret_key
 router = APIRouter()
@@ -38,7 +36,7 @@ async def user_login(user_credentials: EmployeeSignIn = Body(...)):
                 httponly=True,
                 secure=False,  
                 samesite="None",
-                max_age= 5, 
+                max_age= 15, 
             )
             response.set_cookie(
                 key="refresh_token",
@@ -46,7 +44,7 @@ async def user_login(user_credentials: EmployeeSignIn = Body(...)):
                 httponly=True,
                 secure=False,  
                 samesite="None",
-                max_age= 15, 
+                max_age= 60, 
             )
 
             print("Refresh Token set:", refresh_token) 
@@ -54,6 +52,8 @@ async def user_login(user_credentials: EmployeeSignIn = Body(...)):
             return response
 
     raise HTTPException(status_code=403, detail="Incorrect credentials")
+
+
 
 # Forgot Password Route
 @router.post("/forgot-password")

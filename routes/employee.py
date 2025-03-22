@@ -1,6 +1,5 @@
 # routes only for employee
-
-from fastapi import APIRouter, HTTPException, Depends, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, HTTPException, Depends,Request, WebSocket, WebSocketDisconnect
 from typing import List, Optional, Dict, Any, Set
 from pydantic import BaseModel, Field
 from models.meet import Meet, MeetStatus
@@ -16,8 +15,21 @@ from collections import defaultdict
 router = APIRouter()
 
 
-async def verify_employee(token: str = Depends(JWTBearer())):
-    """Verify that the user is an employee."""
+
+async def verify_employee(request: Request):
+    """Verify that the user is an employee using JWT from cookies."""
+    print("Verifying employee...")
+    print("Refesh token received:", request.cookies.get("refresh_token"))
+
+    # Get token from cookies
+    token = request.cookies.get("access_token")
+    if not token:
+        raise HTTPException(
+            status_code=401,
+            detail="Authentication token missing"
+        )
+
+    # Decode JWT
     payload = decode_jwt(token)
     if not payload:
         raise HTTPException(
@@ -25,7 +37,7 @@ async def verify_employee(token: str = Depends(JWTBearer())):
             detail="Invalid authentication credentials"
         )
 
-    # use the payload.employee_id to get the employee details
+    # Fetch employee details using payload
     employee = await Employee.get_by_id(payload["employee_id"])
     if not employee:
         raise HTTPException(
@@ -33,7 +45,7 @@ async def verify_employee(token: str = Depends(JWTBearer())):
             detail="Employee not found"
         )
 
-    # check if the employee is blocked
+    # Check if employee is blocked
     if employee.is_blocked:
         raise HTTPException(
             status_code=401,
