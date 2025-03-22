@@ -5,7 +5,12 @@ from pydantic import BaseModel
 from models.session import Session, SessionStatus
 from models.employee import Employee
 from models.chat import Chat
-from fastapi_jwt_auth import AuthJWT
+from async_fastapi_jwt_auth import AuthJWT
+# Add import for AuthJWTBearer
+from async_fastapi_jwt_auth.auth_jwt import AuthJWTBearer
+
+# Add auth dependency
+auth_dep = AuthJWTBearer()
 
 router = APIRouter()
 
@@ -16,11 +21,11 @@ class SessionResponse(BaseModel):
     status: str
     scheduled_at: datetime
 
-async def verify_user(Authorize: AuthJWT = Depends()):
+async def verify_user(Authorize: AuthJWT = Depends(auth_dep)):
     """Verify user using JWT cookies"""
     try:
-        Authorize.jwt_required()
-        claims = Authorize.get_raw_jwt()
+        await Authorize.jwt_required()
+        claims = await Authorize.get_raw_jwt()
         
         if not claims.get("sub"):  # sub contains employee_id
             raise HTTPException(
