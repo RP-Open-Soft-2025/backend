@@ -2,10 +2,16 @@ from fastapi import APIRouter, HTTPException, Depends, WebSocket, WebSocketDisco
 from typing import List, Dict, Any, Set
 from models.chat import Chat, ChatMode, SenderType, SentimentType
 from models.session import Session, SessionStatus
-from auth.jwt_bearer import JWTBearer
-from auth.jwt_handler import decode_jwt
+# from auth.jwt_bearer import JWTBearer
+# from auth.jwt_handler import decode_jwt
 from pydantic import BaseModel
 from datetime import datetime
+from async_fastapi_jwt_auth import AuthJWT
+# Add import for AuthJWTBearer
+from async_fastapi_jwt_auth.auth_jwt import AuthJWTBearer
+
+# Add auth dependency
+auth_dep = AuthJWTBearer()
 
 router = APIRouter()
 
@@ -55,15 +61,12 @@ class LLMConnectionManager:
 
 llm_manager = LLMConnectionManager()
 
-async def verify_employee(token: str = Depends(JWTBearer())):
-    """Verify that the user is an employee."""
-    payload = decode_jwt(token)
-    if not payload or payload.get("role") != "employee":
-        raise HTTPException(
-            status_code=403,
-            detail="Only employees can access this endpoint"
-        )
-    return payload
+async def verify_employee(Authorize: AuthJWT = Depends(auth_dep)):
+    await Authorize.jwt_required()
+    claims = await Authorize.get_raw_jwt()
+    if claims.get("role") != "employee":
+        raise HTTPException(status_code=403, detail="Only employees can access this endpoint")
+    return claims
 
 @router.websocket("/ws/llm/{chat_id}")
 async def llm_websocket_endpoint(websocket: WebSocket, chat_id: str):
