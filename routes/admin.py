@@ -7,9 +7,10 @@ from pydantic import BaseModel, EmailStr, Field
 from models.session import Session, SessionStatus
 from models.employee import Employee, Role
 from models.chat import Chat
-from auth.jwt_bearer import JWTBearer
-from auth.jwt_handler import decode_jwt
+# from auth.jwt_bearer import JWTBearer
+# from auth.jwt_handler import decode_jwt
 from passlib.context import CryptContext
+from fastapi_jwt_auth import AuthJWT
 
 router = APIRouter()
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -41,16 +42,12 @@ class ReassignHrRequest(BaseModel):
     newHrId: str = Field(..., description="ID of the new HR to assign")
 
 
-async def verify_admin(token: str = Depends(JWTBearer())):
-    """Verify that the user is an admin."""
-    payload = decode_jwt(token)
-    print(payload)
-    if not payload or payload.get("role") != "admin":
-        raise HTTPException(
-            status_code=403,
-            detail="Only administrators can access this endpoint"
-        )
-    return payload
+async def verify_admin(Authorize: AuthJWT = Depends()):
+    Authorize.jwt_required()
+    claims = Authorize.get_raw_jwt()
+    if claims.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Only administrators can access this endpoint")
+    return claims
 
 
 @router.post("/create-user", tags=["Admin"])

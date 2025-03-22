@@ -5,8 +5,9 @@ from typing import Optional
 from pydantic import BaseModel, Field
 from models.employee import Employee, Role
 from models.session import Session, SessionStatus
-from auth.jwt_bearer import JWTBearer
-from auth.jwt_handler import decode_jwt
+# from auth.jwt_bearer import JWTBearer
+# from auth.jwt_handler import decode_jwt
+from fastapi_jwt_auth import AuthJWT
 import datetime
 
 router = APIRouter()
@@ -17,15 +18,12 @@ class BlockUserRequest(BaseModel):
     reason: Optional[str] = Field(default=None, description="Reason for blocking the user")
 
 
-async def verify_admin_or_hr(token: str = Depends(JWTBearer())):
-    """Verify that the user is either an admin or HR."""
-    payload = decode_jwt(token)
-    if not payload or payload.get("role") not in ["admin", "hr"]:
-        raise HTTPException(
-            status_code=403,
-            detail="Only administrators and HR can access this endpoint"
-        )
-    return payload
+async def verify_admin_or_hr(Authorize: AuthJWT = Depends()):
+    Authorize.jwt_required()
+    claims = Authorize.get_raw_jwt()
+    if claims.get("role") not in ["admin", "hr"]:
+        raise HTTPException(status_code=403, detail="Only administrators and HR can access this endpoint")
+    return claims
 
 
 async def verify_access_rights(admin_hr_id: str, target_employee_id: str, role: str):
