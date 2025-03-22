@@ -1,77 +1,204 @@
 # routes only for hr
 from fastapi import APIRouter, HTTPException, Depends
-from fastapi.security import OAuth2PasswordBearer, HTTPAuthorizationCredentials
 from auth.jwt_handler import decode_jwt
+from auth.jwt_bearer import JWTBearer
+from models.session import Session, SessionStatus
 from models.employee import Employee, Role
-import datetime
+from models.chat import Chat
+from datetime import datetime
+import uuid
+from pydantic import BaseModel, Field
+from typing import Optional
 
 router = APIRouter()
-security = OAuth2PasswordBearer(tokenUrl="token")
+# security = OAuth2PasswordBearer(tokenUrl="token")
 
-@router.patch("/block-user/{userId}")
-async def block_user_hr(userId: str, token: HTTPAuthorizationCredentials = Depends(security)):
+class CreateSessionRequest(BaseModel):
+    scheduled_at: datetime = Field(..., description="When the session is scheduled for")
+    notes: Optional[str] = Field(default=None, description="Any additional notes about the session")
+
+
+async def verify_hr(token: str = Depends(JWTBearer())):
+    """Verify that the user is an HR."""
     if not token or token.lower() == "not authenticated":
-        raise HTTPException(status_code=401, detail="Unauthorised")
+        raise HTTPException(status_code=401, detail="Unauthorized")
     
     claims_jwt = decode_jwt(token)
     hr_user = await Employee.find_one({"employee_id": claims_jwt["employee_id"], "role": Role.HR})
-
+    
     if not hr_user:
-        return HTTPException(403, "Error HR not found")
+        raise HTTPException(status_code=403, detail="Only HR personnel can access this endpoint")
     
-    emp_user = await Employee.find_one({"employee_id": userId})
-    if not emp_user:
-        raise HTTPException(status_code=404, detail="Employee not found")
+    return claims_jwt
 
-    if emp_user.manager_id == claims_jwt["employee_id"]:
-        emp_user.is_blocked = True
-        emp_user.blocked_by = emp_user.employee_id
-        emp_user.blocked_at = datetime.datetime.now()
-        return {"msg": f"{emp_user.employee_id} is blocked"}
-    else:
-        return HTTPException(403, "Error not employee of HR")
+@router.get("/list-assigned-users", tags=["HR"])
+async def list_assigned_users(hr: dict = Depends(verify_hr)):
+    """
+    Get a list of users assigned to the HR.
+    Only HR personnel can access this endpoint.
+    """
+    try:
+        # Get all employees assigned to this HR
+        employees = await Employee.find({"manager_id": hr["employee_id"]}).to_list()
+        # Format the response
+        users = []
+        for employee in employees:
+            latest_vibe = None
+            if employee.company_data.vibemeter:
+                latest_vibe = employee.company_data.vibemeter[-1]
+            user_data = {
+                "userId": employee.employee_id,
+                "name": employee.name,
+                "email": employee.email,
+                "status": "active" if not employee.is_blocked else "blocked",
+                "latestVibe": latest_vibe,
+                "sessionData": {
+                    "moodScores": [
+                        {
+                            "timestamp": vibe.Response_Date.isoformat(),
+                            "Vibe_Score": vibe.Vibe_Score,
+                            "Emotion_Zone": vibe.Emotion_Zone
+                        }
+                        for vibe in employee.company_data.vibemeter
+                    ]
+                }
+            }
+            users.append(user_data)
         
+        return {"users": users}
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error fetching assigned users: {str(e)}"
+        )
 
-@router.patch("/unblock-user/{userId}")
-async def unblock_user_hr(userId: str, token: HTTPAuthorizationCredentials = Depends(security)):
-    if not token or token.lower() == "not authenticated":
-        raise HTTPException(status_code=401, detail="Unauthorised")
-    
-    claims_jwt = decode_jwt(token)
-    hr_user = await Employee.find_one({"employee_id": claims_jwt["employee_id"], "role": Role.HR})
+@router.get("/sessions/pending")
+async def get_hr_sessions(hr = Depends(verify_hr)):
+    hr_user = await Employee.find_one({"employee_id": hr["employee_id"], "role": Role.HR})
 
-    if not hr_user:
-        return HTTPException(403, "Error HR not found")
-    
-    emp_user = await Employee.find_one({"employee_id": userId})
-    if not emp_user:
-        raise HTTPException(status_code=404, detail="Employee not found")
-
-    if emp_user.manager_id == claims_jwt["employee_id"]:
-        emp_user.is_blocked = False
-        emp_user.blocked_by = None
-        emp_user.blocked_at = None
-        return {"msg": f"{emp_user.employee_id} is unblocked"}
-    else:
-        return HTTPException(403, "Error not employee of HR")
-        
-@router.delete("/delete-user/{userId}")
-async def delete_user_hr(userId: str, token: HTTPAuthorizationCredentials = Depends(security)):
-    if not token or token.lower() == "not authenticated":
-        raise HTTPException(status_code=401, detail="Unauthorised")
-    
-    claims_jwt = decode_jwt(token)
-    hr_user = await Employee.find_one({"employee_id": claims_jwt["employee_id"], "role": Role.HR})
-    
     if not hr_user:
         raise HTTPException(status_code=403, detail="Error HR not found")
     
-    emp_user = await Employee.find_one({"employee_id": userId})
+    # Get all employees managed by this HR
+    employees = await Employee.get_employees_by_manager(hr["employee_id"])
+    employee_ids = [emp.employee_id for emp in employees]
+    
+    # Get active sessions for all employees under this HR
+    active_sessions = await Session.find({
+        "user_id": {"$in": employee_ids},
+        "status": SessionStatus.PENDING
+    }).to_list()
+    
+    # Format response
+    session_responses = [
+        {
+            "session_id": session.session_id,
+            "employee_id": session.user_id,
+            "chat_id": session.chat_id,
+            "status": session.status.value,
+            "scheduled_at": session.scheduled_at
+        }
+        for session in active_sessions
+    ]
+    
+    return session_responses
+
+@router.get("/sessions/completed")
+async def get_hr_sessions(hr = Depends(verify_hr)):
+    hr_user = await Employee.find_one({"employee_id": hr["employee_id"], "role": Role.HR})
+
+    if not hr_user:
+        raise HTTPException(status_code=403, detail="Error HR not found")
+    
+    # Get all employees managed by this HR
+    employees = await Employee.get_employees_by_manager(hr["employee_id"])
+    employee_ids = [emp.employee_id for emp in employees]
+    
+    # Get active sessions for all employees under this HR
+    active_sessions = await Session.find({
+        "user_id": {"$in": employee_ids},
+        "status": SessionStatus.COMPLETED
+    }).to_list()
+    
+    # Format response
+    session_responses = [
+        {
+            "session_id": session.session_id,
+            "employee_id": session.user_id,
+            "chat_id": session.chat_id,
+            "status": session.status.value,
+            "scheduled_at": session.scheduled_at
+        }
+        for session in active_sessions
+    ]
+    
+    return session_responses
+
+@router.get("/sessions/active")
+async def get_hr_sessions(hr = Depends(verify_hr)):
+    hr_user = await Employee.find_one({"employee_id": hr["employee_id"], "role": Role.HR})
+
+    if not hr_user:
+        raise HTTPException(status_code=403, detail="Error HR not found")
+    
+    # Get all employees managed by this HR
+    employees = await Employee.get_employees_by_manager(hr["employee_id"])
+    employee_ids = [emp.employee_id for emp in employees]
+
+    # Get active sessions for all employees under this HR
+    active_sessions = await Session.find({
+        "user_id": {"$in": employee_ids},
+        "status": SessionStatus.ACTIVE
+    }).to_list()
+    
+    # Format response
+    session_responses = [
+        {
+            "session_id": session.session_id,
+            "employee_id": session.user_id,
+            "chat_id": session.chat_id,
+            "status": session.status.value,
+            "scheduled_at": session.scheduled_at
+        }
+        for session in active_sessions
+    ]
+    
+    return session_responses
+
+@router.post("/session/{user_id}")
+async def create_session_hr(
+    user_id: str, 
+    session_data: CreateSessionRequest,
+    hr = Depends(verify_hr)
+):
+    hr_user = await Employee.find_one({"employee_id": hr["employee_id"], "role": Role.HR})
+
+    if not hr_user:
+        raise HTTPException(status_code=403, detail="Error HR not found")
+    
+    emp_user = await Employee.find_one({"employee_id": user_id})
     if not emp_user:
         raise HTTPException(status_code=404, detail="Employee not found")
+
+    # Verify if the employee is assigned to this HR
+    if emp_user.manager_id != hr["employee_id"]:
+        raise HTTPException(status_code=403, detail="Not authorized to create session for this employee")
     
-    if emp_user.manager_id == claims_jwt["employee_id"]:
-        await emp_user.delete()
-        return {"msg": f"{emp_user.employee_id} is deleted from database"}
-    else:
-        raise HTTPException(status_code=403, detail="Error not authorized to delete this employee")
+    # Create a new chat for the session
+    chat = Chat(user_id=user_id)
+    await chat.save()
+
+    # Create a new session
+    session = Session(
+        user_id=user_id,
+        chat_id=chat.chat_id,
+        scheduled_at=session_data.scheduled_at,
+        notes=session_data.notes
+    )
+    await session.save()
+    
+    return {
+        "message": "Chat has created successfully",
+        "chat_id": chat.chat_id,
+        "session_id": session.session_id
+    }
