@@ -8,24 +8,25 @@ from models.chat import Chat, Message, SenderType
 from models.employee import Employee, EmotionZone
 # from auth.jwt_bearer import JWTBearer
 # from auth.jwt_handler import decode_jwt
-from fastapi_jwt_auth import AuthJWT
-from fastapi_jwt_auth.exceptions import AuthJWTException
+from async_fastapi_jwt_auth import AuthJWT
+from async_fastapi_jwt_auth.auth_jwt import AuthJWTBearer
+from async_fastapi_jwt_auth.exceptions import AuthJWTException
 import datetime
 from collections import defaultdict
-
+auth_dep = AuthJWTBearer()
 
 router = APIRouter()
 
 
 
-async def verify_employee(Authorize: AuthJWT = Depends()):
+async def verify_employee(Authorize: AuthJWT = Depends(auth_dep)):
     """Verify that the user is an employee using JWT cookies."""
     try:
         # Verify access token cookie
-        Authorize.jwt_required()
+        await Authorize.jwt_required()
         
         # Get claims from token
-        claims = Authorize.get_raw_jwt()
+        claims = await Authorize.get_raw_jwt()
         
         if claims.get("role") != "employee":
             raise HTTPException(

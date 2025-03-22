@@ -9,7 +9,12 @@ from datetime import datetime
 import uuid
 from pydantic import BaseModel, Field
 from typing import Optional
-from fastapi_jwt_auth import AuthJWT
+from async_fastapi_jwt_auth import AuthJWT
+# Add import for AuthJWTBearer
+from async_fastapi_jwt_auth.auth_jwt import AuthJWTBearer
+
+# Add auth dependency
+auth_dep = AuthJWTBearer()
 
 router = APIRouter()
 # security = OAuth2PasswordBearer(tokenUrl="token")
@@ -19,9 +24,9 @@ class CreateSessionRequest(BaseModel):
     notes: Optional[str] = Field(default=None, description="Any additional notes about the session")
 
 
-async def verify_hr(Authorize: AuthJWT = Depends()):
-    Authorize.jwt_required()
-    claims = Authorize.get_raw_jwt()
+async def verify_hr(Authorize: AuthJWT = Depends(auth_dep)):
+    await Authorize.jwt_required()
+    claims = await Authorize.get_raw_jwt()
     if claims.get("role") != "hr":
         raise HTTPException(status_code=403, detail="Only HR personnel can access this endpoint")
     return claims

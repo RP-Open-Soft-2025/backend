@@ -1,4 +1,5 @@
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI, Depends, Request
+
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 # from auth.jwt_bearer import JWTBearer
@@ -9,10 +10,12 @@ from routes.admin_hr import router as AdminHRRouter
 from routes.employee import router as EmployeeRouter
 from routes.hr import router as HRRouter
 from routes.session import router as SessionRouter
-from fastapi_jwt_auth import AuthJWT
+from async_fastapi_jwt_auth import AuthJWT
+from async_fastapi_jwt_auth.exceptions import AuthJWTException
 from fastapi.middleware.cors import CORSMiddleware
 # from middleware import AuthMiddleware
 from config.config import JWTSettings
+from fastapi.responses import JSONResponse
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifespan event to initialize resources like the database."""
@@ -29,6 +32,12 @@ app = FastAPI(
 @AuthJWT.load_config
 def get_config():
     return JWTSettings()  # Return your settings instance
+@app.exception_handler(AuthJWTException)
+async def authjwt_exception_handler(request: Request, exc: AuthJWTException):
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.message}
+    )
 # Configure CORS
 # app.add_middleware(
 #     CORSMiddleware,

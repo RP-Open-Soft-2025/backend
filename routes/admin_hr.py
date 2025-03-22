@@ -7,7 +7,12 @@ from models.employee import Employee, Role
 from models.session import Session, SessionStatus
 # from auth.jwt_bearer import JWTBearer
 # from auth.jwt_handler import decode_jwt
-from fastapi_jwt_auth import AuthJWT
+from async_fastapi_jwt_auth import AuthJWT
+# Add import for AuthJWTBearer
+from async_fastapi_jwt_auth.auth_jwt import AuthJWTBearer
+
+# Add auth dependency
+auth_dep = AuthJWTBearer()
 import datetime
 
 router = APIRouter()
@@ -18,9 +23,9 @@ class BlockUserRequest(BaseModel):
     reason: Optional[str] = Field(default=None, description="Reason for blocking the user")
 
 
-async def verify_admin_or_hr(Authorize: AuthJWT = Depends()):
-    Authorize.jwt_required()
-    claims = Authorize.get_raw_jwt()
+async def verify_admin_or_hr(Authorize: AuthJWT = Depends(auth_dep)):
+    await Authorize.jwt_required()
+    claims = await Authorize.get_raw_jwt()
     if claims.get("role") not in ["admin", "hr"]:
         raise HTTPException(status_code=403, detail="Only administrators and HR can access this endpoint")
     return claims
