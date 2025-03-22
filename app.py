@@ -10,7 +10,6 @@ from routes.employee import router as EmployeeRouter
 from routes.hr import router as HRRouter
 from routes.session import router as SessionRouter
 from routes.llm_chat import router as LLMChatRouter
-from routes.llm import router as LLMRouter
 from routes.chat import router as ChatRouter
 
 from fastapi.middleware.cors import CORSMiddleware
@@ -64,8 +63,7 @@ app.include_router(authRouter,prefix="/auth", tags=["auth"])
 
 app.include_router(AdminRouter, tags=["Admin"], prefix="/admin")
 app.include_router(AdminHRRouter, tags=["Admin-HR"], prefix="/admin-hr")
-app.include_router(EmployeeRouter, tags=["Employee"], prefix="/user")
+app.include_router(EmployeeRouter, tags=["Employee"], prefix="/employee")
 app.include_router(HRRouter, tags=["HR"], prefix="/hr")
-app.include_router(ChatRouter, tags=["chat"],prefix="/llm/chat")
-app.include_router(LLMRouter, tags=["LLM"], prefix="/llm")
+app.include_router(ChatRouter, tags=["chat"],prefix="/chat")
 app.include_router(LLMChatRouter, tags=["LLM-Chat"], prefix="/llm/chat")

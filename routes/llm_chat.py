@@ -1,11 +1,13 @@
 from fastapi import APIRouter, HTTPException, Depends
 from typing import List
 from models.chat import Chat, ChatMode, SenderType, SentimentType
-from auth.auth import get_current_user
+from models.session import Session, SessionStatus
+from auth.jwt_bearer import JWTBearer
+from auth.jwt_handler import decode_jwt
 from pydantic import BaseModel
 from datetime import datetime
 
-router = APIRouter(prefix="/llm/chat", tags=["llm_chat"])
+router = APIRouter()
 
 class ChatMessageRequest(BaseModel):
     chatId: str
@@ -29,26 +31,64 @@ class ChatHistoryResponse(BaseModel):
     chatId: str
     messages: List[ChatMessage]
 
+async def verify_employee(token: str = Depends(JWTBearer())):
+    """Verify that the user is an employee."""
+    payload = decode_jwt(token)
+    if not payload or payload.get("role") != "employee":
+        raise HTTPException(
+            status_code=403,
+            detail="Only employees can access this endpoint"
+        )
+    return payload
+
 @router.post("/message")
-async def send_message(request: ChatMessageRequest, current_user: dict = Depends(get_current_user)):
+async def send_message(
+    request: ChatMessageRequest,
+    employee: dict = Depends(verify_employee)
+):
     """
-    Send a message to the chat system (placeholder for future LLM integration)
+    Send a message to the LLM bot and get a response.
+    Also handles sentiment analysis and potential escalation.
     """
+    # Get or create chat
     chat = await Chat.get_chat_by_id(request.chatId)
     if not chat:
         raise HTTPException(status_code=404, detail="Chat not found")
     
-    # Add user message
+    # Verify employee owns this chat
+    if chat.user_id != employee["employee_id"]:
+        raise HTTPException(status_code=403, detail="Not authorized to access this chat")
+    
+    # Get associated session
+    session = await Session.get(chat.session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Associated session not found")
+    
+    # Activate session if not already active
+    if session.status != SessionStatus.ACTIVE:
+        session.status = SessionStatus.ACTIVE
+        await session.save()
+    
+    # Add employee message
     await chat.add_message(SenderType.EMPLOYEE, request.message)
     
-    # Placeholder bot response (to be replaced with actual LLM integration)
+    # TODO: Implement actual LLM integration here
+    # For now, using placeholder response
     bot_response = "Thank you for reaching out. I'm here to help. Can you tell me more about what's on your mind?"
     await chat.add_message(SenderType.BOT, bot_response)
     
-    return {"message": bot_response}
+    # TODO: Implement sentiment analysis here
+    # This would be called after every message
+    # If sentiment is negative, escalate to HR
+    
+    return {
+        "message": bot_response,
+        "chatId": chat.chat_id,
+        "sessionStatus": session.status
+    }
 
 @router.patch("/status")
-async def update_chat_status(request: ChatStatusRequest, current_user: dict = Depends(get_current_user)):
+async def update_chat_status(request: ChatStatusRequest, current_user: dict = Depends(verify_employee)):
     """
     Update chat mode between bot and HR (Admin & HR only)
     """
@@ -63,7 +103,7 @@ async def update_chat_status(request: ChatStatusRequest, current_user: dict = De
     return {"message": f"Chat status updated to {request.status} mode"}
 
 @router.patch("/escalate")
-async def escalate_chat(request: ChatEscalationRequest, current_user: dict = Depends(get_current_user)):
+async def escalate_chat(request: ChatEscalationRequest, current_user: dict = Depends(verify_employee)):
     """
     Escalate chat to HR based on sentiment (placeholder logic)
     """
@@ -79,16 +119,20 @@ async def escalate_chat(request: ChatEscalationRequest, current_user: dict = Dep
     return {"message": "Chat escalation not required at this time."}
 
 @router.get("/history/{chat_id}", response_model=ChatHistoryResponse)
-async def get_chat_history(chat_id: str, current_user: dict = Depends(get_current_user)):
+async def get_chat_history(
+    chat_id: str,
+    employee: dict = Depends(verify_employee)
+):
     """
-    Get chat history for review (Admin & HR only)
+    Get chat history for the employee.
     """
-    if current_user["role"] not in ["admin", "hr"]:
-        raise HTTPException(status_code=403, detail="Only admin and HR can view chat history")
-    
     chat = await Chat.get_chat_by_id(chat_id)
     if not chat:
         raise HTTPException(status_code=404, detail="Chat not found")
+    
+    # Verify employee owns this chat
+    if chat.user_id != employee["employee_id"]:
+        raise HTTPException(status_code=403, detail="Not authorized to access this chat")
     
     messages = [
         ChatMessage(

@@ -13,6 +13,7 @@ class SenderType(str, Enum):
 class ChatMode(str, Enum):
     BOT = "bot"
     HR = "hr"
+    ADMIN = "admin"
 
 class SentimentType(str, Enum):
     VERY_NEGATIVE = "very_negative"

@@ -22,16 +22,13 @@ class CreateUserRequest(BaseModel):
     role: Role = Field(..., description="User role in the system")
     manager_id: Optional[str] = Field(default=None, description="ID of the employee's manager")
 
-
 class DeleteUserRequest(BaseModel):
     employee_id: str = Field(..., description="ID of the employee to delete")
     reason: Optional[str] = Field(default=None, description="Reason for deleting the user")
 
-
 class CreateSessionRequest(BaseModel):
     scheduled_at: datetime = Field(..., description="When the session is scheduled for")
     notes: Optional[str] = Field(default=None, description="Any additional notes about the session")
-
 
 class SessionResponse(BaseModel):
     session_id: str
@@ -40,7 +37,6 @@ class SessionResponse(BaseModel):
     status: str
     scheduled_at: datetime
 
-
 class ReassignHrRequest(BaseModel):
     newHrId: str = Field(..., description="ID of the new HR to assign")
 
@@ -48,6 +44,7 @@ class ReassignHrRequest(BaseModel):
 async def verify_admin(token: str = Depends(JWTBearer())):
     """Verify that the user is an admin."""
     payload = decode_jwt(token)
+    print(payload)
     if not payload or payload.get("role") != "admin":
         raise HTTPException(
             status_code=403,
@@ -117,7 +114,6 @@ async def create_user(
             detail=f"Error creating user: {str(e)}"
         )
 
-
 @router.delete("/delete-user", tags=["Admin"])
 async def delete_user(
     delete_data: DeleteUserRequest,
@@ -164,7 +160,6 @@ async def delete_user(
             detail=f"Error deleting user: {str(e)}"
         )
 
-
 @router.post("/session/{user_id}", tags=["Admin"])
 async def create_session(
     user_id: str,
@@ -202,9 +197,8 @@ async def create_session(
         "session_id": session.session_id
     }
 
-
-@router.get("/sessions", response_model=List[SessionResponse], tags=["Admin"])
-async def get_all_sessions(admin: dict = Depends(verify_admin)):
+@router.get("/sessions/pending", response_model=List[SessionResponse], tags=["Admin"])
+async def get_all_active_sessions(admin: dict = Depends(verify_admin)):
     """
     Get all sessions in the system.
     Only administrators can access this endpoint.
@@ -212,7 +206,7 @@ async def get_all_sessions(admin: dict = Depends(verify_admin)):
     """
     try:
         # Get all sessions
-        sessions = await Session.get_all()
+        sessions = await Session.find({"status": SessionStatus.PENDING}).to_list()
         
         # Convert sessions to response format
         session_responses = [
@@ -233,11 +227,66 @@ async def get_all_sessions(admin: dict = Depends(verify_admin)):
             detail=f"Error fetching sessions: {str(e)}"
         )
     
-
-
-
-
-
+@router.get("/sessions/completed", response_model=List[SessionResponse], tags=["Admin"])
+async def get_all_active_sessions(admin: dict = Depends(verify_admin)):
+    """
+    Get all sessions in the system.
+    Only administrators can access this endpoint.
+    Returns a list of all sessions with their details.
+    """
+    try:
+        # Get all sessions
+        sessions = await Session.find({"status": SessionStatus.COMPLETED}).to_list()
+        
+        # Convert sessions to response format
+        session_responses = [
+            SessionResponse(
+                session_id=session.session_id,
+                employee_id=session.user_id,
+                chat_id=session.chat_id,
+                status=session.status.value,
+                scheduled_at=session.scheduled_at
+            )
+            for session in sessions
+        ]
+        
+        return session_responses
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error fetching sessions: {str(e)}"
+        )
+    
+@router.get("/sessions/active", response_model=List[SessionResponse], tags=["Admin"])
+async def get_all_active_sessions(admin: dict = Depends(verify_admin)):
+    """
+    Get all sessions in the system.
+    Only administrators can access this endpoint.
+    Returns a list of all sessions with their details.
+    """
+    try:
+        # Get all sessions
+        sessions = await Session.find({"status": SessionStatus.ACTIVE}).to_list()
+        
+        # Convert sessions to response format
+        session_responses = [
+            SessionResponse(
+                session_id=session.session_id,
+                employee_id=session.user_id,
+                chat_id=session.chat_id,
+                status=session.status.value,
+                scheduled_at=session.scheduled_at
+            )
+            for session in sessions
+        ]
+        
+        return session_responses
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error fetching sessions: {str(e)}"
+        )
+    
 @router.get("/list-users", tags=["Admin"])
 async def list_users(admin: dict = Depends(verify_admin)):
     """
@@ -263,10 +312,12 @@ async def list_users(admin: dict = Depends(verify_admin)):
                 "role": employee.role,
                 "status": "active" if not employee.is_blocked else "blocked",
                 "sessionData": {
+                    "latestVibe": latest_vibe,
                     "moodScores": [
                         {
                             "timestamp": vibe.Response_Date.isoformat(),
-                            "score": vibe.Vibe_Score
+                            "Vibe_Score": vibe.Vibe_Score,
+                            "Emotion_Zone": vibe.Emotion_Zone
                         }
                         for vibe in employee.company_data.vibemeter
                     ]
@@ -280,7 +331,6 @@ async def list_users(admin: dict = Depends(verify_admin)):
             status_code=500,
             detail=f"Error fetching users: {str(e)}"
         )
-
 
 @router.patch("/reassign-hr/{userId}", tags=["Admin"])
 async def reassign_hr(
@@ -330,7 +380,6 @@ async def reassign_hr(
             status_code=500,
             detail=f"Error reassigning HR: {str(e)}"
         )
-
 
 @router.get("/list-hr", tags=["Admin"])
 async def list_hr(admin: dict = Depends(verify_admin)):
