@@ -1,0 +1,25 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: my-app
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: my-app
+  template:
+    metadata:
+      labels:
+        app: my-app
+    spec:
+      containers:
+        - name: my-app
+          image: gcr.io/[PROJECT_ID]/my-app:v1
+          ports:
+            - containerPort: 8080
+          env:
+            - name: DATABASE_URL
+              value: "mongodb+srv://udayomsrivastava:oHHFqeCziUf4gfgU@cluster0.vgn8n.mongodb.net/Cluster0?retryWrites=true&w=majority&appName=Cluster0"
+            - name: SECRET_KEY
+              value: "guiyfgc837tgf3iw87-012389764"
+

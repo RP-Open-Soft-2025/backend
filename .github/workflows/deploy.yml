@@ -1,0 +1,35 @@
+name: Deploy to Google App Engine
+
+on:
+  push:
+    branches:
+      - main  # Deploy when code is pushed to the main branch
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      # Decode Google Cloud Credentials (Fixes the space error issue)
+      - name: Decode Google Cloud Credentials
+        run: echo "${{ secrets.GCP_SA_KEY }}" | base64 --decode > key.json
+
+      # Authenticate with Google Cloud using the decoded credentials
+      - name: Authenticate with Google Cloud
+        uses: google-github-actions/auth@v1
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      # Set up Google Cloud SDK
+      - name: Set up Google Cloud SDK
+        uses: google-github-actions/setup-gcloud@v1
+        with:
+          version: "latest"
+
+      # Deploy the application to Google App Engine
+      - name: Deploy to Google App Engine
+        run: gcloud app deploy --quiet
+
