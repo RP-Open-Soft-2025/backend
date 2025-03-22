@@ -5,8 +5,12 @@ from pydantic import BaseModel
 from models.session import Session, SessionStatus
 from models.employee import Employee
 from models.chat import Chat
-from auth.jwt_bearer import JWTBearer
-from auth.jwt_handler import decode_jwt
+from async_fastapi_jwt_auth import AuthJWT
+# Add import for AuthJWTBearer
+from async_fastapi_jwt_auth.auth_jwt import AuthJWTBearer
+
+# Add auth dependency
+auth_dep = AuthJWTBearer()
 
 router = APIRouter()
 
@@ -17,23 +21,33 @@ class SessionResponse(BaseModel):
     status: str
     scheduled_at: datetime
 
+async def verify_user(Authorize: AuthJWT = Depends(auth_dep)):
+    """Verify user using JWT cookies"""
+    try:
+        await Authorize.jwt_required()
+        claims = await Authorize.get_raw_jwt()
+        
+        if not claims.get("sub"):  # sub contains employee_id
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid token: employee_id not found"
+            )
+        return claims
+    except Exception as e:
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid authentication credentials"
+        )
+
 @router.get("/", response_model=List[SessionResponse])
-async def get_user_sessions(token: str = Depends(JWTBearer())):
+async def get_user_sessions(claims: dict = Depends(verify_user)):
     """
     Get sessions for the authenticated user.
     Returns a list of sessions associated with the user.
     """
     try:
-        # Decode the JWT token to get user info
-        payload = decode_jwt(token)
-        user_id = payload.get("employee_id")
-        user_role = payload.get("role")
-        
-        if not user_id:
-            raise HTTPException(
-                status_code=400,
-                detail="Invalid token: employee_id not found"
-            )
+        user_id = claims.get("sub")  # sub contains employee_id
+        user_role = claims.get("role")
 
         # Get sessions based on role
         if user_role == "admin":
@@ -63,22 +77,14 @@ async def get_user_sessions(token: str = Depends(JWTBearer())):
         )
 
 @router.get("/{session_id}", response_model=SessionResponse)
-async def get_session(session_id: str, token: str = Depends(JWTBearer())):
+async def get_session(session_id: str, claims: dict = Depends(verify_user)):
     """
     Get a specific session by ID.
     Users can only access their own sessions unless they are admins.
     """
     try:
-        # Decode the JWT token to get user info
-        payload = decode_jwt(token)
-        user_id = payload.get("employee_id")
-        user_role = payload.get("role")
-        
-        if not user_id:
-            raise HTTPException(
-                status_code=400,
-                detail="Invalid token: employee_id not found"
-            )
+        user_id = claims.get("sub")  # sub contains employee_id
+        user_role = claims.get("role")
 
         # Get the session
         session = await Session.get_by_id(session_id)
@@ -107,4 +113,4 @@ async def get_session(session_id: str, token: str = Depends(JWTBearer())):
         raise HTTPException(
             status_code=500,
             detail=f"Error fetching session: {str(e)}"
-        ) 
+        )
