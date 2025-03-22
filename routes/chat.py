@@ -1,7 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Header, Body
-from typing import Dict, Any, List
+from fastapi import APIRouter, Depends, HTTPException, status, Header, Body, WebSocket, WebSocketDisconnect
+from typing import Dict, Any, List, Set
 from auth.jwt_handler import decode_jwt
-from models.chat import Chat, Message, SenderType
+from auth.jwt_bearer import JWTBearer
+from models.chat import Chat, SenderType
 from datetime import timedelta, datetime
 from pydantic import BaseModel
 from fastapi.security import OAuth2PasswordBearer, HTTPAuthorizationCredentials
@@ -11,8 +12,6 @@ from models.meet import Meet, MeetStatus
 from typing import Optional
 
 router = APIRouter()
-security = OAuth2PasswordBearer(tokenUrl="token")
-
 class EscalateChatRequest(BaseModel):
     chatId: str
     detectedSentiment: str
@@ -32,13 +31,53 @@ class ChatHistoryResponse(BaseModel):
     chatId: str
     messages: List[ChatMessage]
 
-async def verify_admin_or_hr(token: str = Depends(security)):
+class ChatMessagesResponse(BaseModel):
+    chat_id: str
+    messages: List[ChatMessage]
+    total_messages: int
+    last_updated: datetime
+
+# Add WebSocket connection manager
+class ConnectionManager:
+    def __init__(self):
+        self.active_connections: Dict[str, Set[WebSocket]] = {}
+
+    async def connect(self, websocket: WebSocket, chat_id: str):
+        await websocket.accept()
+        if chat_id not in self.active_connections:
+            self.active_connections[chat_id] = set()
+        self.active_connections[chat_id].add(websocket)
+
+    def disconnect(self, websocket: WebSocket, chat_id: str):
+        if chat_id in self.active_connections:
+            self.active_connections[chat_id].remove(websocket)
+            if not self.active_connections[chat_id]:
+                del self.active_connections[chat_id]
+
+    async def broadcast_to_chat(self, chat_id: str, message: Dict[str, Any]):
+        if chat_id in self.active_connections:
+            for connection in self.active_connections[chat_id]:
+                await connection.send_json(message)
+
+manager = ConnectionManager()
+
+async def verify_admin_or_hr(token: str = Depends(JWTBearer())):
     """Verify that the user is either an admin or HR."""
     payload = decode_jwt(token)
     if not payload or payload.get("role") not in ["admin", "hr"]:
         raise HTTPException(
             status_code=403,
             detail="Only administrators and HR can access this endpoint"
+        )
+    return payload
+
+async def verify_employee(token: str = Depends(JWTBearer())):
+    """Verify that the user is an employee."""
+    payload = decode_jwt(token)
+    if not payload or payload.get("role") != "employee":
+        raise HTTPException(
+            status_code=403,
+            detail="Only employees can access this endpoint"
         )
     return payload
 
@@ -72,7 +111,21 @@ async def verify_chat_access(admin_hr_id: str, chat_id: str, role: str):
     
     return True
 
-@router.post("/message")
+@router.websocket("/ws/{chat_id}")
+async def websocket_endpoint(websocket: WebSocket, chat_id: str):
+    """
+    WebSocket endpoint for real-time chat updates.
+    """
+    await manager.connect(websocket, chat_id)
+    try:
+        while True:
+            data = await websocket.receive_text()
+            # Handle incoming messages if needed
+            # For now, we'll just keep the connection alive
+    except WebSocketDisconnect:
+        manager.disconnect(websocket, chat_id)
+
+@router.post("/message-to-employee")
 async def send_message(
     request: ChatMessageRequest,
     admin_hr: dict = Depends(verify_admin_or_hr)
@@ -91,7 +144,7 @@ async def send_message(
         raise HTTPException(status_code=404, detail="Chat not found")
     
     # Get associated session
-    session = await Session.get(chat.session_id)
+    session = await Session.find_one({"chat_id": chat.chat_id})
     if not session:
         raise HTTPException(status_code=404, detail="Associated session not found")
     
@@ -105,6 +158,14 @@ async def send_message(
         admin_hr["role"],
         request.message
     )
+    
+    # Broadcast the new message to all connected clients
+    await manager.broadcast_to_chat(request.chatId, {
+        "type": "new_message",
+        "sender": admin_hr["role"],
+        "message": request.message,
+        "timestamp": datetime.now().isoformat()
+    })
     
     return {
         "message": "Message sent successfully",
@@ -138,10 +199,68 @@ async def get_chat_history(
         for msg in chat.messages
     ]
     
+    # Broadcast that someone is viewing the chat
+    await manager.broadcast_to_chat(chat_id, {
+        "type": "viewer_joined",
+        "viewer_role": admin_hr["role"],
+        "timestamp": datetime.now().isoformat()
+    })
+    
     return ChatHistoryResponse(
         chatId=chat.chat_id,
         messages=messages
     )
+
+@router.post("/message-from-employee")
+async def receive_message(
+    request: ChatMessageRequest,
+    employee: dict = Depends(verify_employee)
+):
+    """
+    Receive a message from an employee.
+    """
+    
+    # Get the chat
+    chat = await Chat.get_chat_by_id(request.chatId)
+    if not chat:
+        raise HTTPException(status_code=404, detail="Chat not found")
+    
+    # Verify the employee owns this chat
+    if chat.user_id != employee["employee_id"]:
+        raise HTTPException(
+            status_code=403,
+            detail="You can only send messages to your own chat"
+        )
+    
+    # Get associated session
+    session = await Session.find_one({"chat_id": chat.chat_id})
+    if not session:
+        raise HTTPException(status_code=404, detail="Associated session not found")
+    
+    # Activate session if not already active
+    if session.status != SessionStatus.ACTIVE:
+        session.status = SessionStatus.ACTIVE
+        await session.save()
+    
+    # Add employee message
+    await chat.add_message(
+        SenderType.EMPLOYEE,
+        request.message
+    )
+    
+    # Broadcast the new message to all connected clients
+    await manager.broadcast_to_chat(request.chatId, {
+        "type": "new_message",
+        "sender": SenderType.EMPLOYEE.value,
+        "message": request.message,
+        "timestamp": datetime.now().isoformat()
+    })
+    
+    return {
+        "message": "Message sent successfully",
+        "chatId": chat.chat_id,
+        "sessionStatus": session.status
+    }
 
 def assignTimeCalendar(existing_meetings: list[Meet], duration: int = 60) -> datetime:
     """

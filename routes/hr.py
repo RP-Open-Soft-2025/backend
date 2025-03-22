@@ -82,8 +82,6 @@ async def get_hr_sessions(hr = Depends(verify_hr)):
     # Get all employees managed by this HR
     employees = await Employee.get_employees_by_manager(hr["employee_id"])
     employee_ids = [emp.employee_id for emp in employees]
-    # get all employee details
-    employee_details = await Employee.find({"employee_id": {"$in": employee_ids}}).to_list()
     
     # Get active sessions for all employees under this HR
     active_sessions = await Session.find({
@@ -96,7 +94,6 @@ async def get_hr_sessions(hr = Depends(verify_hr)):
         {
             "session_id": session.session_id,
             "employee_id": session.user_id,
-            "employee_details": employee_details[employee_ids.index(session.user_id)],
             "chat_id": session.chat_id,
             "status": session.status.value,
             "scheduled_at": session.scheduled_at
@@ -116,8 +113,6 @@ async def get_hr_sessions(hr = Depends(verify_hr)):
     # Get all employees managed by this HR
     employees = await Employee.get_employees_by_manager(hr["employee_id"])
     employee_ids = [emp.employee_id for emp in employees]
-    # get all employee details
-    employee_details = await Employee.find({"employee_id": {"$in": employee_ids}}).to_list()
     
     # Get active sessions for all employees under this HR
     active_sessions = await Session.find({
@@ -130,7 +125,6 @@ async def get_hr_sessions(hr = Depends(verify_hr)):
         {
             "session_id": session.session_id,
             "employee_id": session.user_id,
-            "employee_details": employee_details[employee_ids.index(session.user_id)],
             "chat_id": session.chat_id,
             "status": session.status.value,
             "scheduled_at": session.scheduled_at
@@ -150,9 +144,6 @@ async def get_hr_sessions(hr = Depends(verify_hr)):
     # Get all employees managed by this HR
     employees = await Employee.get_employees_by_manager(hr["employee_id"])
     employee_ids = [emp.employee_id for emp in employees]
-    # get all employee details
-    employee_details = await Employee.find({"employee_id": {"$in": employee_ids}}).to_list()
-    
 
     # Get active sessions for all employees under this HR
     active_sessions = await Session.find({
@@ -165,7 +156,6 @@ async def get_hr_sessions(hr = Depends(verify_hr)):
         {
             "session_id": session.session_id,
             "employee_id": session.user_id,
-            "employee_details": employee_details[employee_ids.index(session.user_id)],
             "chat_id": session.chat_id,
             "status": session.status.value,
             "scheduled_at": session.scheduled_at
