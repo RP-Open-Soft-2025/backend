@@ -6,15 +6,8 @@ services:
     ports:
       - "8080:8080"
     env_file:
-      - .env.docker-compose
-
-  mongodb:
-    image: bitnami/mongodb:latest
-    ports:
-      - "27017"
-    volumes:
-      - data:/bitnami/mongodb
-
+      - .env.dev
 
 volumes:
   data:
+
