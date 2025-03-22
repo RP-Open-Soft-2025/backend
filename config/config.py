@@ -25,3 +25,4 @@ async def initiate_database():
     await init_beanie(
         database=client.get_default_database(), document_models=models.__all__
     )
+

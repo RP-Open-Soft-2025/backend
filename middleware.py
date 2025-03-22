@@ -1,52 +1,54 @@
-from fastapi import FastAPI, Request, Response, Depends
-from jose import JWTError, jwt
 from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.responses import JSONResponse
-from auth.jwt_handler import sign_jwt
-from models import Employee
-from config.config import Settings
+from fastapi import Request, Response
+from jose import jwt, JWTError, ExpiredSignatureError
+from models import Employee  # Adjust based on your ORM
+from auth.jwt_handler import sign_jwt  # Function to generate a new token
 
-app = FastAPI()
-
-secret_key = Settings().secret_key
+SECRET_KEY = "your_secret_key"
+ALGORITHM = "HS256"
 
 class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
-        """Middleware to automatically refresh JWT access token when expired."""
-        response = await call_next(request)  
+        """Middleware to refresh JWT access token when expired."""
+        print("Cookies received:", request.cookies) 
+
+        response = await call_next(request)  # Get the response early
 
         access_token = request.cookies.get("access_token")
+        refresh_token = request.cookies.get("refresh_token")
+
         if not access_token:
-            return response  
+            return response  # No access token, skip refresh
 
         try:
-            jwt.decode(access_token, secret_key, algorithms=["HS256"])
-        except JWTError:
-            refresh_token = request.cookies.get("refresh_token")
+            jwt.decode(access_token, SECRET_KEY, algorithms=[ALGORITHM])
+        except ExpiredSignatureError:  # Only refresh if access token expired
             if refresh_token:
                 try:
-                    payload = jwt.decode(refresh_token, secret_key, algorithms=["HS256"])
-                    employee_id = payload.get("sub") 
+                    payload = jwt.decode(refresh_token, SECRET_KEY, algorithms=[ALGORITHM])
+                    employee_id = payload.get("sub")  
 
-                    user_exists = await Employee.find_one(Employee.employee_id == employee_id)
+                    # Fetch user from DB (Use the correct ORM method)
+                    user_exists = await Employee.get(employee_id=employee_id)  # Adjust based on your ORM
                     if not user_exists:
-                        return response  
+                        return response  # User not found, don't refresh
 
+                    # Generate new access token
                     new_access_token = sign_jwt(user_exists.employee_id, user_exists.role, user_exists.email)
-
+                    print("New access token generated")
+                    # Set new access token in cookies
                     response.set_cookie(
-                        key="access_token",
+                        key="new_access_token",
                         value=new_access_token,
                         httponly=True,
-                        secure=True,  
+                        secure=False,
                         samesite="None",
-                        max_age=5,  
+                        max_age=15,  
                     )
-
                 except JWTError:
-                    pass  
+                    print("logout")  # Invalid refresh token, do nothing
 
-        return response  
+        return response
 
 
 

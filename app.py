@@ -9,23 +9,10 @@ from routes.admin_hr import router as AdminHRRouter
 from routes.employee import router as EmployeeRouter
 from routes.hr import router as HRRouter
 from routes.session import router as SessionRouter
-from routes.llm_chat import router as LLMChatRouter
-from routes.chat import router as ChatRouter
+
 from fastapi.middleware.cors import CORSMiddleware
 from middleware import AuthMiddleware
 
-app = FastAPI()
-
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-app.add_middleware(AuthMiddleware)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifespan event to initialize resources like the database."""
@@ -42,12 +29,12 @@ app = FastAPI(
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allows all origins
+    allow_origins=["http://10.145.66.172:3000"],  # Allows all origins
     allow_credentials=True,
-    allow_methods=["*"],  # Allows all methods
-    allow_headers=["*"],  # Allows all headers
+    allow_methods=["GET","POST","PUT","DELETE","OPTIONS"],  # Allows all methods
+    allow_headers=["Authorization","Content-Type"],  # Allows all headers
 )
-
+app.add_middleware(AuthMiddleware)
 token_listener = JWTBearer()
 
 
@@ -62,7 +49,7 @@ app.include_router(authRouter,prefix="/auth", tags=["auth"])
 
 app.include_router(AdminRouter, tags=["Admin"], prefix="/admin")
 app.include_router(AdminHRRouter, tags=["Admin-HR"], prefix="/admin-hr")
-app.include_router(EmployeeRouter, tags=["Employee"], prefix="/employee")
+app.include_router(EmployeeRouter, tags=["Employee"], prefix="/user")
 app.include_router(HRRouter, tags=["HR"], prefix="/hr")
-app.include_router(ChatRouter, tags=["chat"],prefix="/chat")
-app.include_router(LLMChatRouter, tags=["LLM-Chat"], prefix="/llm/chat")
+app.include_router(SessionRouter, tags=["Session"], prefix="/session")
+
