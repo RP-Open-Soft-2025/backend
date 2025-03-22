@@ -11,7 +11,6 @@ from routes.hr import router as HRRouter
 from routes.session import router as SessionRouter
 from routes.llm_chat import router as LLMChatRouter
 from routes.chat import router as ChatRouter
-
 from fastapi.middleware.cors import CORSMiddleware
 from middleware import AuthMiddleware
 
