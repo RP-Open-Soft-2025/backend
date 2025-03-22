@@ -1,46 +1,61 @@
 # routes only for employee
-
-from fastapi import APIRouter, HTTPException, Depends, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, HTTPException, Depends,Request, WebSocket, WebSocketDisconnect
 from typing import List, Optional, Dict, Any, Set
 from pydantic import BaseModel, Field
 from models.meet import Meet, MeetStatus
 from models.session import Session, SessionStatus
 from models.chat import Chat, Message, SenderType
 from models.employee import Employee, EmotionZone
-from auth.jwt_bearer import JWTBearer
-from auth.jwt_handler import decode_jwt
+# from auth.jwt_bearer import JWTBearer
+# from auth.jwt_handler import decode_jwt
+from async_fastapi_jwt_auth import AuthJWT
+from async_fastapi_jwt_auth.auth_jwt import AuthJWTBearer
+from async_fastapi_jwt_auth.exceptions import AuthJWTException
 import datetime
 from collections import defaultdict
-
+auth_dep = AuthJWTBearer()
 
 router = APIRouter()
 
 
-async def verify_employee(token: str = Depends(JWTBearer())):
-    """Verify that the user is an employee."""
-    payload = decode_jwt(token)
-    if not payload:
+
+async def verify_employee(Authorize: AuthJWT = Depends(auth_dep)):
+    """Verify that the user is an employee using JWT cookies."""
+    try:
+        # Verify access token cookie
+        await Authorize.jwt_required()
+        
+        # Get claims from token
+        claims = await Authorize.get_raw_jwt()
+        
+        if claims.get("role") != "employee":
+            raise HTTPException(
+                status_code=403, 
+                detail="Only employees can access this endpoint"
+            )
+
+        # Fetch employee details using payload
+        employee = await Employee.get_by_id(claims.get("sub"))
+        if not employee:
+            raise HTTPException(
+                status_code=401,
+                detail="Employee not found"
+            )
+
+        # Check if employee is blocked
+        if employee.is_blocked:
+            raise HTTPException(
+                status_code=401,
+                detail="Employee is blocked"
+            )
+
+        return claims
+
+    except AuthJWTException as e:
         raise HTTPException(
             status_code=401,
-            detail="Invalid authentication credentials"
+            detail=str(e)
         )
-
-    # use the payload.employee_id to get the employee details
-    employee = await Employee.get_by_id(payload["employee_id"])
-    if not employee:
-        raise HTTPException(
-            status_code=401,
-            detail="Employee not found"
-        )
-
-    # check if the employee is blocked
-    if employee.is_blocked:
-        raise HTTPException(
-            status_code=401,
-            detail="Employee is blocked"
-        )
-
-    return payload
 
 
 class MeetResponse(BaseModel):
