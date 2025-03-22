@@ -1,181 +1,147 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Header, Body
-from typing import Dict, Any
+from typing import Dict, Any, List
 from auth.jwt_handler import decode_jwt
 from models.chat import Chat, Message, SenderType
-from datetime import timedelta,datetime
+from datetime import timedelta, datetime
 from pydantic import BaseModel
 from fastapi.security import OAuth2PasswordBearer, HTTPAuthorizationCredentials
-from models.session import Session
+from models.session import Session, SessionStatus
 from models.employee import Employee, Role
 from models.meet import Meet, MeetStatus
 from typing import Optional
 
 router = APIRouter()
 security = OAuth2PasswordBearer(tokenUrl="token")
+
 class EscalateChatRequest(BaseModel):
     chatId: str
     detectedSentiment: str
     reason: str
-    timeDuartion: Optional[int]
+    timeDuration: Optional[int]
 
-async def get_current_user(authorization: str = Header(None)):
-    if not authorization or not authorization.startswith("Bearer "):
+class ChatMessageRequest(BaseModel):
+    chatId: str
+    message: str
+
+class ChatMessage(BaseModel):
+    sender: str
+    text: str
+    timestamp: datetime
+
+class ChatHistoryResponse(BaseModel):
+    chatId: str
+    messages: List[ChatMessage]
+
+async def verify_admin_or_hr(token: str = Depends(security)):
+    """Verify that the user is either an admin or HR."""
+    payload = decode_jwt(token)
+    if not payload or payload.get("role") not in ["admin", "hr"]:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid authentication credentials. Bearer token required."
+            status_code=403,
+            detail="Only administrators and HR can access this endpoint"
+        )
+    return payload
+
+async def verify_chat_access(admin_hr_id: str, chat_id: str, role: str):
+    """Verify that the user has rights to access the chat."""
+    if role == "admin":
+        return True
+    
+    # Get the chat
+    chat = await Chat.get_chat_by_id(chat_id)
+    if not chat:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Chat with ID {chat_id} not found"
         )
     
-    token = authorization.replace("Bearer ", "")
-    
-    try:
-        payload = decode_jwt(token)
-        if not payload or "employee_id" not in payload or "role" not in payload:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid token or token expired"
-            )
-        return {"id": payload["employee_id"], "role": payload["role"]}
-    except Exception as e:
+    # Get the employee associated with the chat
+    employee = await Employee.get_by_id(chat.user_id)
+    if not employee:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"Error processing token: {str(e)}"
+            status_code=404,
+            detail=f"Employee associated with chat {chat_id} not found"
         )
+    
+    # HR can only access chats for employees assigned to them
+    if employee.manager_id != admin_hr_id:
+        raise HTTPException(
+            status_code=403,
+            detail="You can only access chats for employees assigned to you"
+        )
+    
+    return True
 
 @router.post("/message")
 async def send_message(
-    data: Dict[str, Any],
-    current_user = Depends(get_current_user)
+    request: ChatMessageRequest,
+    admin_hr: dict = Depends(verify_admin_or_hr)
 ):
-    user_id = current_user["id"]
+    """
+    Send a message to an employee.
+    Only administrators and HR can access this endpoint.
+    HR can only send messages to employees assigned to them.
+    """
+    # Verify access rights
+    await verify_chat_access(admin_hr["employee_id"], request.chatId, admin_hr["role"])
     
-    if "message" not in data or "chatId" not in data:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="chatId and message are required"
-        )
+    # Get the chat
+    chat = await Chat.get_chat_by_id(request.chatId)
+    if not chat:
+        raise HTTPException(status_code=404, detail="Chat not found")
     
-    user_message = data["message"]
-    chat_id = data["chatId"]
+    # Get associated session
+    session = await Session.get(chat.session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Associated session not found")
     
-    try:
-        chat = await Chat.get_chat_by_id(chat_id)
-        if chat:
-            if chat.user_id != user_id:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="Not authorized to access this chat"
-                )
-        else:
-            chat = Chat(user_id=user_id, id=chat_id)
-            await chat.save()
-        
-        await chat.add_message(sender_type=SenderType.EMPLOYEE, text=user_message)
-        
-        #we need to implement the logic to get the bot(llm) response
-        bot_response = "Thank you for reaching out. I'm here to help. Can you tell me more about what's on your mind?"
-        await chat.add_message(sender_type=SenderType.BOT, text=bot_response)
-        
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error processing chat: {str(e)}"
-        )
+    # Activate session if not already active
+    if session.status != SessionStatus.ACTIVE:
+        session.status = SessionStatus.ACTIVE
+        await session.save()
     
-    return {"message": bot_response, "chatId": chat_id}
-
-@router.patch("/status")
-async def update_chat_status(
-    data: Dict[str, Any],
-    current_user = Depends(get_current_user)
-):
-    if current_user["role"] not in ["admin", "hr"]:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only Admin and HR can update chat status"
-        )
-    
-    if "chatId" not in data or "status" not in data:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="chatId and status are required"
-        )
-    # print(f"Fetching chat with ID: {data['chatId']}")
-    chat_id = data["chatId"]
-    
-    status_value = data["status"]
-    
-    try:
-        chat = await Chat.get_chat_by_id(chat_id)
-        # print(f"Chat fetched: {chat}")
-        if not chat:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Chat not found"
-            )
-        
-        chat.status = status_value
-        await chat.save()
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error updating chat status: {str(e)}"
-        )
-    
-    return {"message": f"Chat status updated to {status_value} mode"}
-
-
-@router.patch("/escalate")
-async def escalate_chat(request: EscalateChatRequest = Body(...)):
-    chat_det = await Session.find_one({"chat_id": request.chatId})
-    if not chat_det:
-        raise HTTPException(404, "Given chatId doesn't exist")
-    
-    user = await Employee.find_one({"employee_id": chat_det.user_id})
-    if not user:
-        raise HTTPException(404, "Given employee doesn't exist")
-    
-    manager_id = user.manager_id
-    existing_meetings = await Meet.find({"with_user_id": manager_id}).to_list()
-    duration_minutes = 480 if not request.timeDuartion else request.timeDuartion
-
-    proposed_time = assignTimeCalendar(existing_meetings, duration_minutes)
-    new_meet = Meet(
-        user_id=user.employee_id,
-        with_user_id=user.manager_id,
-        scheduled_at=proposed_time,
-        duration_minutes=duration_minutes,
-        status=MeetStatus.SCHEDULED
+    # Add HR/Admin message
+    await chat.add_message(
+        admin_hr["role"],
+        request.message
     )
     
-    await new_meet.save()
-    
-    return {"message": "Chat flagged for HR review due to detected distress."}
+    return {
+        "message": "Message sent successfully",
+        "chatId": chat.chat_id,
+        "sessionStatus": session.status
+    }
 
-@router.get("/history/{chatId}")
-async def get_chat_history(chatId: str, token: HTTPAuthorizationCredentials = Depends(security)):
-    # Check if token is valid
-    if not token or token.lower() == "not authenticated":
-        raise HTTPException(status_code=401, detail="Unauthorised")
+@router.get("/history/{chat_id}", response_model=ChatHistoryResponse)
+async def get_chat_history(
+    chat_id: str,
+    admin_hr: dict = Depends(verify_admin_or_hr)
+):
+    """
+    Get chat history for review.
+    Only administrators and HR can access this endpoint.
+    HR can only view chats for employees assigned to them.
+    """
+    # Verify access rights
+    await verify_chat_access(admin_hr["employee_id"], chat_id, admin_hr["role"])
     
-    # Decode JWT and get employee details
-    claims_jwt = decode_jwt(token)
-    user = await Employee.find_one({"employee_id": claims_jwt["employee_id"]})
-    
-    # Check authorization
-    if not user:
-        raise HTTPException(401, "User not found")
-    
-    if not (user.role == Role.HR or user.role == Role.ADMIN):
-        raise HTTPException(401, "User is not allowed to perform this action")
-    
-    # Get chat details
-    chat = await Chat.find_one({"chat_id": chatId})
-    
+    chat = await Chat.get_chat_by_id(chat_id)
     if not chat:
-        raise HTTPException(404, "Chat with the given id is not found")
+        raise HTTPException(status_code=404, detail="Chat not found")
     
-    # Return the chat with its messages
-    return chat
+    messages = [
+        ChatMessage(
+            sender=msg.sender_type.value,
+            text=msg.text,
+            timestamp=msg.timestamp
+        )
+        for msg in chat.messages
+    ]
+    
+    return ChatHistoryResponse(
+        chatId=chat.chat_id,
+        messages=messages
+    )
 
 def assignTimeCalendar(existing_meetings: list[Meet], duration: int = 60) -> datetime:
     """
