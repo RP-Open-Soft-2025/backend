@@ -227,7 +227,7 @@ class Employee(Document):
             "example": {
                 "employee_id": "EMP0001",
                 "name": "John Doe",
-                "email": "EMP0001@gmail.com",
+                "email": "emp0001@gmail.com",
                 "password": "password",
                 "role": "employee",
                 "manager_id": "EMP1001",
