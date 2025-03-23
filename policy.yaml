@@ -1,0 +1,9 @@
+bindings:
+- role: roles/appengine.admin
+  members:
+  - user:maverick195.iitkgp@gmail.com
+- role: roles/iam.serviceAccountUser
+  members:
+  - user:maverick195.iitkgp@gmail.com
+etag: "BwWJ6xyz="
+
