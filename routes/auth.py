@@ -1,84 +1,63 @@
-from fastapi import APIRouter, Body, HTTPException, Depends
+from fastapi import APIRouter, Body, HTTPException, Response, Request
 from passlib.context import CryptContext
+from auth.jwt_handler import sign_jwt, refresh_jwt
 from models.employee import Employee
 from schemas.user import EmployeeSignIn, ResetPasswordRequest, ForgotPasswordRequest, ForgotPasswordResponse
 from utils.utils import send_email
 import uuid
 from config.config import Settings
 from fastapi.responses import JSONResponse
-from async_fastapi_jwt_auth import AuthJWT
-from async_fastapi_jwt_auth.exceptions import AuthJWTException
-from pydantic import BaseModel
-from async_fastapi_jwt_auth.auth_jwt import AuthJWTBearer
-# Define a Pydantic model for the login response
-class LoginResponse(BaseModel):
-    success: bool
-    message: str
-    role: str
+from jose import JWTError, jwt, ExpiredSignatureError
+from fastapi import Depends
 
 secret_key = Settings().secret_key
 router = APIRouter()
 hash_helper = CryptContext(schemes=["bcrypt"])
 reset_tokens = {}
 
-# Add auth dependency
-auth_dep = AuthJWTBearer()
-
-@router.post("/login", response_model=LoginResponse)
-async def user_login(user_credentials: EmployeeSignIn = Body(...), Authorize: AuthJWT = Depends(auth_dep)):
+@router.post("/login")
+async def user_login(user_credentials: EmployeeSignIn = Body(...)):
     user_exists = await Employee.find_one(Employee.employee_id == user_credentials.employee_id)
     if user_exists:
         password = hash_helper.verify(user_credentials.password, user_exists.password)
         if password:
-            # Create the tokens asynchronously
-            access_token = await Authorize.create_access_token(subject=user_credentials.employee_id, user_claims={
-                "role": user_exists.role,
-                "email": user_exists.email
-            })
-            refresh_token = await Authorize.create_refresh_token(subject=user_credentials.employee_id, user_claims={
-                "email": user_exists.email
-            })
+            access_token = sign_jwt(user_credentials.employee_id, user_exists.role, user_exists.email)
+            refresh_token = refresh_jwt(user_credentials.employee_id, user_exists.email)
 
-            # Set the JWT cookies in the response
             response = JSONResponse(content={
-                "success": True,
-                "message": "Successful login",
+                "access_token": access_token, 
+                "refresh_token": refresh_token,
                 "role": user_exists.role
             })
-            
-            await Authorize.set_access_cookies(access_token, response)
-            await Authorize.set_refresh_cookies(refresh_token, response)
 
             return response
 
     raise HTTPException(status_code=403, detail="Incorrect credentials")
 
-@router.post('/refresh')
-async def refresh(Authorize: AuthJWT = Depends(auth_dep)):
-    """
-    Endpoint to refresh the access token using a valid refresh token.
-    """
-    await Authorize.jwt_refresh_token_required()
-    
-    current_user = await Authorize.get_jwt_subject()
-    user = await Employee.find_one(Employee.employee_id == current_user)
-    
-    new_access_token = await Authorize.create_access_token(subject=current_user, user_claims={
-        "role": user.role,
-        "email": user.email
-    })
-    
-    response = JSONResponse(content={"message": "Token refreshed successfully"})
-    await Authorize.set_access_cookies(new_access_token, response)
-    return response
+@router.get("/refresh")
+async def refresh_access_token(request: Request, response: Response):
+    cookies = request.cookies
+    print("Received Cookies:", cookies)
+    refresh_token = request.cookies.get("refresh_token")
+    if not refresh_token:
+        raise HTTPException(status_code=401, detail="Refresh token missing")
 
-@router.get('/protected')
-async def protected(Authorize: AuthJWT = Depends(auth_dep)):
-    await Authorize.jwt_required()
-    
-    current_user = await Authorize.get_jwt_subject()
-    return {"user": current_user}
+    try:
+        payload = jwt.decode(refresh_token, secret_key, algorithms=["HS256"])
+        employee_id = payload.get("sub")
+        email = payload.get("email")
 
+        if not employee_id or not email:
+            raise HTTPException(status_code=401, detail="Invalid refresh token")
+
+    
+        new_access_token = sign_jwt(employee_id, payload.get("role", ""), email)
+
+        return {"access_token": new_access_token}
+
+    except ExpiredSignatureError:
+        response.delete_cookie("refresh_token")  
+        raise HTTPException(status_code=401, detail="Refresh token expired. Please log in again.")
 
 # Forgot Password Route
 @router.post("/forgot-password")
@@ -112,4 +91,3 @@ async def reset_password(reset_token: str, request_data: ResetPasswordRequest):
 
     del reset_tokens[reset_token]
     return {"message": "Password reset successful"}
-
