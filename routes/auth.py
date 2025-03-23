@@ -61,11 +61,17 @@ async def refresh_access_token(request: Request, response: Response):
         response.delete_cookie("refresh_token")  
         raise HTTPException(status_code=401, detail="Refresh token expired. Please log in again.")
 
+
 # Forgot Password Route
-# Forgot Password Route
+last_reset_request = {}
 @router.post("/forgot-password")
 async def forgot_password(forgot_password_request: ForgotPasswordRequest = Body(...)):
     email = forgot_password_request.email.lower()
+    current_time = datetime.utcnow()
+    if email in last_reset_request:
+        last_request_time = last_reset_request[email]
+        if current_time - last_request_time < timedelta(minutes=2):
+            raise HTTPException(status_code=429, detail="Too many requests. Please wait 2 minutes before trying again.")
 
     # Perform case-insensitive search
     user_exists = await Employee.find_one({"email": {"$regex": f"^{email}$", "$options": "i"}})
@@ -80,6 +86,7 @@ async def forgot_password(forgot_password_request: ForgotPasswordRequest = Body(
     }
     reset_link = f"{email_template}{reset_token}"
     await send_email(user_exists.email, reset_link)
+    last_reset_request[email] = current_time
     return ForgotPasswordResponse(message="Password reset link sent to your email.")
 
 # Reset Password Route
