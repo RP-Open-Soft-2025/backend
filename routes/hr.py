@@ -1,7 +1,7 @@
 # routes only for hr
 from fastapi import APIRouter, HTTPException, Depends
-# from auth.jwt_handler import decode_jwt
-# from auth.jwt_bearer import JWTBearer
+from auth.jwt_handler import decode_jwt
+from auth.jwt_bearer import JWTBearer
 from models.session import Session, SessionStatus
 from models.employee import Employee, Role
 from models.chat import Chat
@@ -9,12 +9,6 @@ from datetime import datetime
 import uuid
 from pydantic import BaseModel, Field
 from typing import Optional
-from async_fastapi_jwt_auth import AuthJWT
-# Add import for AuthJWTBearer
-from async_fastapi_jwt_auth.auth_jwt import AuthJWTBearer
-
-# Add auth dependency
-auth_dep = AuthJWTBearer()
 
 router = APIRouter()
 # security = OAuth2PasswordBearer(tokenUrl="token")
@@ -24,12 +18,18 @@ class CreateSessionRequest(BaseModel):
     notes: Optional[str] = Field(default=None, description="Any additional notes about the session")
 
 
-async def verify_hr(Authorize: AuthJWT = Depends(auth_dep)):
-    await Authorize.jwt_required()
-    claims = await Authorize.get_raw_jwt()
-    if claims.get("role") != "hr":
+async def verify_hr(token: str = Depends(JWTBearer())):
+    """Verify that the user is an HR."""
+    if not token or token.lower() == "not authenticated":
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    
+    claims_jwt = decode_jwt(token)
+    hr_user = await Employee.find_one({"employee_id": claims_jwt["employee_id"], "role": Role.HR})
+    
+    if not hr_user:
         raise HTTPException(status_code=403, detail="Only HR personnel can access this endpoint")
-    return claims
+    
+    return claims_jwt
 
 @router.get("/list-assigned-users", tags=["HR"])
 async def list_assigned_users(hr: dict = Depends(verify_hr)):
