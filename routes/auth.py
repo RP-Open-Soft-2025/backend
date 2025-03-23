@@ -11,6 +11,7 @@ from jose import JWTError, jwt, ExpiredSignatureError
 from fastapi import Depends
 
 secret_key = Settings().secret_key
+email_template = Settings().email_template
 router = APIRouter()
 hash_helper = CryptContext(schemes=["bcrypt"])
 reset_tokens = {}
@@ -25,7 +26,7 @@ async def user_login(user_credentials: EmployeeSignIn = Body(...)):
             refresh_token = refresh_jwt(user_credentials.employee_id, user_exists.email)
 
             response = JSONResponse(content={
-                "access_token": access_token, 
+                "access_token": access_token,
                 "refresh_token": refresh_token,
                 "role": user_exists.role
             })
@@ -62,13 +63,17 @@ async def refresh_access_token(request: Request, response: Response):
 # Forgot Password Route
 @router.post("/forgot-password")
 async def forgot_password(forgot_password_request: ForgotPasswordRequest = Body(...)):
-    user_exists = await Employee.find_one(Employee.email == forgot_password_request.email)
+    email = forgot_password_request.email.lower()
+
+    # Perform case-insensitive search
+    user_exists = await Employee.find_one({"email": {"$regex": f"^{email}$", "$options": "i"}})
+
     if not user_exists:
         raise HTTPException(status_code=404, detail="User not found")
     
     reset_token = str(uuid.uuid4())
     reset_tokens[reset_token] = user_exists.email
-    reset_link = f"http://127.0.0.1:8080/auth/reset-password/{reset_token}"
+    reset_link = f"{email_template}{reset_token}"
     await send_email(user_exists.email, reset_link)
     return ForgotPasswordResponse(message="Password reset link sent to your email.")
 
@@ -77,7 +82,11 @@ async def forgot_password(forgot_password_request: ForgotPasswordRequest = Body(
 async def reset_password(reset_token: str, request_data: ResetPasswordRequest):
     email = reset_tokens.get(reset_token)
     if not email:
-        raise HTTPException(status_code=400, detail="Invalid or expired token")
+        # raise HTTPException(status_code=400, detail="")
+        return {
+            "success": False,
+            "message":"Invalid or expired token"
+        }
     
     user = await Employee.find_one(Employee.email == email)
     if not user:
@@ -90,4 +99,10 @@ async def reset_password(reset_token: str, request_data: ResetPasswordRequest):
     await user.save()
 
     del reset_tokens[reset_token]
-    return {"message": "Password reset successful"}
+    
+    return {
+        "success": True,
+        "message": "Password reset successful"
+    }
+
+    
