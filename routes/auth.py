@@ -9,6 +9,7 @@ from config.config import Settings
 from fastapi.responses import JSONResponse
 from jose import JWTError, jwt, ExpiredSignatureError
 from fastapi import Depends
+from datetime import datetime, timedelta
 
 secret_key = Settings().secret_key
 email_template = Settings().email_template
@@ -61,6 +62,7 @@ async def refresh_access_token(request: Request, response: Response):
         raise HTTPException(status_code=401, detail="Refresh token expired. Please log in again.")
 
 # Forgot Password Route
+# Forgot Password Route
 @router.post("/forgot-password")
 async def forgot_password(forgot_password_request: ForgotPasswordRequest = Body(...)):
     email = forgot_password_request.email.lower()
@@ -72,7 +74,10 @@ async def forgot_password(forgot_password_request: ForgotPasswordRequest = Body(
         raise HTTPException(status_code=404, detail="User not found")
     
     reset_token = str(uuid.uuid4())
-    reset_tokens[reset_token] = user_exists.email
+    reset_tokens[reset_token] = {
+        "email": user_exists.email,
+        "timestamp": datetime.utcnow()
+    }
     reset_link = f"{email_template}{reset_token}"
     await send_email(user_exists.email, reset_link)
     return ForgotPasswordResponse(message="Password reset link sent to your email.")
@@ -80,21 +85,28 @@ async def forgot_password(forgot_password_request: ForgotPasswordRequest = Body(
 # Reset Password Route
 @router.post("/reset-password/{reset_token}")
 async def reset_password(reset_token: str, request_data: ResetPasswordRequest):
-    email = reset_tokens.get(reset_token)
-    if not email:
-        # raise HTTPException(status_code=400, detail="")
-        return {
-            "success": False,
-            "message":"Invalid or expired token"
-        }
+    token_data = reset_tokens.get(reset_token)
+    if not token_data:
+        raise HTTPException(status_code=404, detail="Invalid or expired token")
+        # return {
+        #     "success": False,
+        #     "message":"Invalid or expired token"
+        # }
+    email = token_data["email"]
+    timestamp = token_data["timestamp"]
     
     user = await Employee.find_one(Employee.email == email)
     if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise HTTPException(status_code=404, detail="Invalid or expired token")
     
-    if hash_helper.verify(request_data.new_password, user.password):
+    while( hash_helper.verify(request_data.new_password, user.password)):
         raise HTTPException(status_code=400, detail="New password cannot be the same as the old password.")
     
+    current_time = datetime.utcnow()
+    if current_time - timestamp > timedelta(minutes=5):
+        del reset_tokens[reset_token]
+        raise HTTPException(status_code=410, detail="Reset link has expired")
+        
     user.password = hash_helper.hash(request_data.new_password)
     await user.save()
 
