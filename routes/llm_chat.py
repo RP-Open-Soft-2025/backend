@@ -141,19 +141,26 @@ async def send_message(
         "sessionStatus": session.status
     }
 
-@router.patch("/status")
-async def update_chat_status(request: ChatStatusRequest, current_user: dict = Depends(verify_employee)):
+@router.patch("/initiate-chat")
+async def initiate_chat(request: ChatStatusRequest, current_user: dict = Depends(verify_employee)):
     """
-    Update chat mode between bot and HR (Admin & HR only)
+    Initiate a chat between bot and employee
     """
-    if current_user["role"] not in ["admin", "hr"]:
-        raise HTTPException(status_code=403, detail="Only admin and HR can update chat status")
-    
+
     chat = await Chat.get_chat_by_id(request.chatId)
     if not chat:
         raise HTTPException(status_code=404, detail="Chat not found")
     
-    await chat.update_chat_mode(request.status)
+    # await chat.update_chat_mode(request.status)
+    session = await Session.find_one({"chat_id": chat.chat_id})
+    if not session:
+        raise HTTPException(status_code=404, detail="Associated session not found")
+    
+    session.status = SessionStatus.ACTIVE
+    await session.save()
+
+    bot_response = "Thank you for reaching out. I'm here to help. Can you tell me more about what's on your mind?"
+    await chat.add_message(SenderType.BOT, bot_response)
     
     # Broadcast status update
     await llm_manager.broadcast_to_chat(request.chatId, {
@@ -162,7 +169,11 @@ async def update_chat_status(request: ChatStatusRequest, current_user: dict = De
         "timestamp": datetime.now().isoformat()
     })
     
-    return {"message": f"Chat status updated to {request.status} mode"}
+    return {
+        "message": bot_response,
+        "chatId": chat.chat_id,
+        "sessionStatus": session.status
+    }
 
 @router.patch("/escalate")
 async def escalate_chat(request: ChatEscalationRequest, current_user: dict = Depends(verify_employee)):
