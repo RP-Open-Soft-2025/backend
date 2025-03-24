@@ -44,7 +44,7 @@ class ReassignHrRequest(BaseModel):
 async def verify_admin(token: str = Depends(JWTBearer())):
     """Verify that the user is an admin."""
     payload = decode_jwt(token)
-    print(payload)
+    # print(payload)
     if not payload or payload.get("role") != "admin":
         raise HTTPException(
             status_code=403,
@@ -295,38 +295,46 @@ async def list_users(admin: dict = Depends(verify_admin)):
     """
     try:
         # Get all employees
-        employees = await Employee.find_all().to_list()
+        employees = await Employee.find_all()
         
         # Format the response
         users = []
         for employee in employees:
-            # Get the latest vibe meter entry for session data
-            latest_vibe = None
-            if employee.company_data.vibemeter:
-                latest_vibe = employee.company_data.vibemeter[-1]
-            
-            user_data = {
-                "userId": employee.employee_id,
-                "name": employee.name,
-                "email": employee.email,
-                "role": employee.role,
-                "status": "active" if not employee.is_blocked else "blocked",
-                "sessionData": {
-                    "latestVibe": latest_vibe,
-                    "moodScores": [
-                        {
-                            "timestamp": vibe.Response_Date.isoformat(),
-                            "Vibe_Score": vibe.Vibe_Score,
-                            "Emotion_Zone": vibe.Emotion_Zone
-                        }
-                        for vibe in employee.company_data.vibemeter
-                    ]
+            try:
+                # Get the latest vibe meter entry for session data
+                latest_vibe = None
+                if hasattr(employee, 'company_data') and employee.company_data and hasattr(employee.company_data, 'vibemeter') and employee.company_data.vibemeter:
+                    latest_vibe = employee.company_data.vibemeter[-1]
+                
+                # Create user data with proper error handling
+                user_data = {
+                    "userId": getattr(employee, 'employee_id', ''),
+                    "name": getattr(employee, 'name', ''),
+                    "email": getattr(employee, 'email', ''),
+                    "role": getattr(employee, 'role', ''),
+                    "status": "active" if not getattr(employee, 'is_blocked', False) else "blocked",
+                    "sessionData": {
+                        "latestVibe": latest_vibe,
+                        "moodScores": [
+                            {
+                                "timestamp": vibe.Response_Date.isoformat(),
+                                "Vibe_Score": vibe.Vibe_Score,
+                                "Emotion_Zone": vibe.Emotion_Zone
+                            }
+                            for vibe in (employee.company_data.vibemeter if hasattr(employee, 'company_data') and employee.company_data and hasattr(employee.company_data, 'vibemeter') else [])
+                        ]
+                    }
                 }
-            }
-            users.append(user_data)
+                users.append(user_data)
+            except Exception as e:
+                print(f"Error processing employee {getattr(employee, 'employee_id', 'unknown')}: {str(e)}")
+                continue
         
         return {"users": users}
     except Exception as e:
+        import traceback
+        print(f"Error in list_users: {str(e)}")
+        print(traceback.format_exc())
         raise HTTPException(
             status_code=500,
             detail=f"Error fetching users: {str(e)}"

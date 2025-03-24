@@ -222,6 +222,16 @@ class Employee(Document):
             raise ValueError("Employee ID must be in the format EMP followed by 4 digits")
         return v
     
+    class Settings:
+        name = "employees"
+        indexes = [
+            "employee_id",
+            "email",
+            "role",
+            "manager_id",
+            "is_blocked",
+        ]
+    
     class Config:
         json_schema_extra = {
             "example": {
@@ -235,63 +245,16 @@ class Employee(Document):
                 "blocked_at": None,
                 "blocked_by": None,
                 "company_data": {
-                    "activity": [
-                        {
-                            "date": "2023-10-01",
-                            "teams_messages_sent": 10,
-                            "emails_sent": 5,
-                            "meetings_attended": 3,
-                            "work_hours": 8.0
-                        }
-                    ],
-                    "leave": [
-                        {
-                            "leave_type": "Casual Leave",
-                            "leave_days": 2,
-                            "leave_start_date": "2023-10-10",
-                            "leave_end_date": "2023-10-11"
-                        }
-                    ],
-                    "onboarding": [
-                        {
-                            "joining_date": "2023-01-01",
-                            "onboarding_feedback": "Good",
-                            "mentor_assigned": True,
-                            "initial_training_completed": True
-                        }
-                    ],
-                    "performance": [
-                        {
-                            "review_period": "Q1 2023",
-                            "performance_rating": 3,
-                            "manager_feedback": "Meets Expectations",
-                            "promotion_consideration": False
-                        }
-                    ],
-                    "rewards": [
-                        {
-                            "award_type": "Star Performer",
-                            "award_date": "2023-05-01",
-                            "reward_points": 100
-                        }
-                    ],
-                    "vibemeter": [
-                        {
-                            "response_date": "2023-09-01",
-                            "vibe_score": 5,
-                            "emotion_zone": "Happy Zone"
-                        }
-                    ]
+                    "activity": [],
+                    "leave": [],
+                    "onboarding": [],
+                    "performance": [],
+                    "rewards": [],
+                    "vibemeter": []
                 }
             }
         }
-
-    class Settings:
-        name = "employees"
-        indexes = [
-            [("employee_id", 1)],  # Correct format for an ascending index
-        ]
-
+    
     @classmethod
     async def get_by_id(cls, employee_id: str):
         return await cls.find_one({"employee_id": employee_id})
@@ -303,3 +266,7 @@ class Employee(Document):
     @classmethod
     async def get_employees_by_manager(cls, manager_id: str):
         return await cls.find({"manager_id": manager_id}).to_list()
+    
+    @classmethod
+    async def find_all(cls):
+        return await cls.find({}).to_list()
