@@ -1,4 +1,4 @@
-name: Deploy to Google App Engine (FastAPI)
+name: Deploy to Google App Engine
 
 on:
   push:
@@ -25,28 +25,7 @@ jobs:
         with:
           version: "latest"
 
-      # Cache Python dependencies
-      - name: Cache Python dependencies
-        uses: actions/cache@v3
-        with:
-          path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
-          restore-keys: |
-            ${{ runner.os }}-pip-
-
-      # Install dependencies (if not already cached)
-      - name: Install dependencies
-        run: |
-          python -m venv venv
-          source venv/bin/activate
-          pip install --upgrade pip
-          pip install -r requirements.txt
-
-      # Deploy FastAPI application to Google App Engine
+      # Deploy the application to Google App Engine
       - name: Deploy to Google App Engine
-        run: gcloud app deploy app.yaml --no-cache --quiet
-
-      # Verify deployment (Optional: Logs for debugging slow deployments)
-      - name: Check deployment logs
-        run: gcloud app logs tail --limit=10
+        run: gcloud app deploy --quiet
 
