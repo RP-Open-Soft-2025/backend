@@ -6,11 +6,11 @@ from pydantic import BaseModel, Field
 import uuid
 
 class MeetStatus(str, Enum):
-    SCHEDULED = "scheduled"  # Meeting is scheduled
-    IN_PROGRESS = "in_progress"  # Meeting is currently happening
-    COMPLETED = "completed"  # Meeting has ended
-    CANCELLED = "cancelled"  # Meeting was cancelled
-    NO_SHOW = "no_show"  # One or more participants didn't show up
+    SCHEDULED = "SCHEDULED"  # Meeting is scheduled
+    IN_PROGRESS = "IN_PROGRESS"  # Meeting is currently happening
+    COMPLETED = "COMPLETED"  # Meeting has ended
+    CANCELLED = "CANCELLED"  # Meeting was cancelled
+    NO_SHOW = "NO_SHOW"  # One or more participants didn't show up
 
 
 class Meet(Document):

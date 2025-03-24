@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 from typing import Dict
 import jwt
 from config.config import Settings
+from fastapi import HTTPException
 
 
 def token_response(token: str):
@@ -13,11 +14,12 @@ secret_key = Settings().secret_key
 
 
 def sign_jwt(employee_id: str, role: str, email: str) -> Dict[str, str]:
-    expiry = datetime.utcnow() + timedelta(days=2)  
+    expiry = datetime.utcnow() + timedelta(days=15)  # Access token expires in 15 days
     payload = {
         "employee_id": employee_id,
         "email": email,
         "role": role,
+        # "account_activated": account_activated,
         "exp": expiry, 
         "iat": datetime.utcnow()  
     }
@@ -28,6 +30,7 @@ def sign_jwt(employee_id: str, role: str, email: str) -> Dict[str, str]:
         print(f"Error encoding JWT: {str(e)}")
         raise
 
+
 def decode_jwt(token: str) -> dict:
     try:
         # Remove 'Bearer ' prefix if present
@@ -36,16 +39,26 @@ def decode_jwt(token: str) -> dict:
 
         decoded_token = jwt.decode(token, secret_key, algorithms=["HS256"])
         return decoded_token
-    except jwt.ExpiredSignatureError as e:
-        return {"error": "Token has expired"}
-    except jwt.InvalidTokenError as e:
-        return {"error": "Invalid token"}
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(
+            status_code=401,
+            detail="Token has expired. Please refresh your token or log in again."
+        )
+    except jwt.InvalidTokenError:
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid token format or signature."
+        )
     except Exception as e:
-        return {"error": f"Token error: {str(e)}"}
+        raise HTTPException(
+            status_code=401,
+            detail=f"Token validation error: {str(e)}"
+        )
 
 
 def refresh_jwt(employee_id: str, email: str):
-    expiration = datetime.utcnow() + timedelta(days=7)  
+    expiration = datetime.utcnow() + timedelta(days=30)  # Refresh token expires in 2 days
+    # expiration = datetime.utcnow() + timedelta(minutes=2)  # Refresh token expires in 2 minutes
     payload = {"employee_id": employee_id, "email": email, "exp": expiration}
 
     try:
