@@ -305,11 +305,13 @@ async def get_scheduled_meets(
 
         # Get meetings where user is the organizer
         try:
+            # print('employee_id: ',employee["employee_id"])
             organizer_meets = await Meet.find({
                 "user_id": employee["employee_id"],
-                "scheduled_at": {"$gt": datetime.datetime.utcnow()},
+                # "scheduled_at": {"$gt": datetime.datetime.utcnow()},
                 "status": MeetStatus.SCHEDULED
             }).to_list()
+            print(organizer_meets)
         except Exception as e:
             print(f"Error fetching organizer meetings: {str(e)}")
 
@@ -317,7 +319,7 @@ async def get_scheduled_meets(
         try:
             participant_meets = await Meet.find({
                 "with_user_id": employee["employee_id"],
-                "scheduled_at": {"$gt": datetime.datetime.utcnow()},
+                # "scheduled_at": {"$gt": datetime.datetime.utcnow()},  
                 "status": MeetStatus.SCHEDULED
             }).to_list()
         except Exception as e:
