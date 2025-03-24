@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     DATABASE_URL: Optional[str] = None
     sender_email: str = "fill sender_email .env.dev"
     sender_password:str = "fill sender_password .env.dev"
+    email_template:str="fill email_template .env.dev"
     # JWT
     secret_key: str = "secret"
     algorithm: str = "HS256"
