@@ -177,7 +177,22 @@ async def create_session(
             status_code=404,
             detail=f"Employee with ID {user_id} not found"
         )
+    
+    # check if there is an active or pending session for the employee
+    active_session = await Session.find_one({"user_id": user_id, "status": SessionStatus.ACTIVE})
+    if active_session:
+        raise HTTPException(
+            status_code=400,
+            detail="Employee already has an active session"
+        )
 
+    pending_session = await Session.find_one({"user_id": user_id, "status": SessionStatus.PENDING})
+    if pending_session:
+        raise HTTPException(
+            status_code=400,
+            detail="Employee already has a pending session"
+        )
+    
     # Create a new chat for the session
     chat = Chat(user_id=user_id)
     await chat.save()
