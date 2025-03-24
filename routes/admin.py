@@ -7,6 +7,7 @@ from pydantic import BaseModel, EmailStr, Field
 from models.session import Session, SessionStatus
 from models.employee import Employee, Role
 from models.chat import Chat
+from models.meet import Meet
 from auth.jwt_bearer import JWTBearer
 from auth.jwt_handler import decode_jwt
 from passlib.context import CryptContext
@@ -301,7 +302,41 @@ async def get_all_active_sessions(admin: dict = Depends(verify_admin)):
             status_code=500,
             detail=f"Error fetching sessions: {str(e)}"
         )
-    
+
+
+@router.get("/sessions", response_model=List[SessionResponse], tags=["Admin"])
+async def get_active_and_pending_sessions(admin: dict = Depends(verify_admin)):
+    """
+    Get all active and pending sessions in the system.
+    Only administrators can access this endpoint.
+    Returns a list of all active and pending sessions with their details.
+    """
+    try:
+        # Get all active and pending sessions
+        sessions = await Session.find(
+            {"status": {"$in": [SessionStatus.ACTIVE, SessionStatus.PENDING]}}
+        ).to_list()
+        
+        # Convert sessions to response format
+        session_responses = [
+            SessionResponse(
+                session_id=session.session_id,
+                employee_id=session.user_id,
+                chat_id=session.chat_id,
+                status=session.status.value,
+                scheduled_at=session.scheduled_at
+            )
+            for session in sessions
+        ]
+        
+        return session_responses
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error fetching sessions: {str(e)}"
+        )
+ 
+
 @router.get("/list-users", tags=["Admin"])
 async def list_users(admin: dict = Depends(verify_admin)):
     """
@@ -432,4 +467,38 @@ async def list_hr(admin: dict = Depends(verify_admin)):
         raise HTTPException(
             status_code=500,
             detail=f"Error fetching HR list: {str(e)}"
+        )
+
+
+@router.get("/meets" , tags=["Admin"])
+async def get_meets(admin: dict = Depends(verify_admin)):
+    """
+    Get a list of all meets with their details.
+    Only administrators can access this endpoint.
+    """
+    try:
+        # Get all meets
+        meets = await Meet.find_all().to_list()
+
+        meets_list = []
+        for meet in meets:
+            meet_data = {
+                "meet_id": meet.meet_id,
+                "user_id": meet.user_id,
+                "with_user_id": meet.with_user_id,
+                "duration": meet.duration_minutes,
+                "status": meet.status,
+                "scheduled_at": meet.scheduled_at,
+                "meeting_link": meet.meeting_link,
+                "location": meet.location,
+                "notes": meet.notes,
+            }
+            meets_list.append(meet_data)
+        # Format the response
+        return meets_list
+    except Exception as e:
+        print(f"Error fetching meets: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error fetching meets: {str(e)}"
         )
