@@ -5,6 +5,7 @@ from auth.jwt_bearer import JWTBearer
 from models.session import Session, SessionStatus
 from models.employee import Employee, Role
 from models.chat import Chat
+from models.meet import Meet
 from datetime import datetime
 import uuid
 from pydantic import BaseModel, Field
@@ -165,6 +166,37 @@ async def get_hr_sessions(hr = Depends(verify_hr)):
     
     return session_responses
 
+@router.get("/sessions")
+async def get_hr_sessions(hr = Depends(verify_hr)):
+    hr_user = await Employee.find_one({"employee_id": hr["employee_id"], "role": Role.HR})
+
+    if not hr_user:
+        raise HTTPException(status_code=403, detail="Error HR not found")
+    
+    # Get all employees managed by this HR
+    employees = await Employee.get_employees_by_manager(hr["employee_id"])
+    employee_ids = [emp.employee_id for emp in employees]
+
+    # Get active sessions for all employees under this HR
+    active_sessions = await Session.find({
+        "user_id": {"$in": employee_ids},
+        "status": {"$in": [SessionStatus.ACTIVE, SessionStatus.PENDING]}
+    }).to_list()
+    
+    # Format response
+    session_responses = [
+        {
+            "session_id": session.session_id,
+            "employee_id": session.user_id,
+            "chat_id": session.chat_id,
+            "status": session.status.value,
+            "scheduled_at": session.scheduled_at
+        }
+        for session in active_sessions
+    ]
+    
+    return session_responses
+
 @router.post("/session/{user_id}")
 async def create_session_hr(
     user_id: str, 
@@ -202,3 +234,36 @@ async def create_session_hr(
         "chat_id": chat.chat_id,
         "session_id": session.session_id
     }
+ 
+
+@router.get("/meets")
+async def get_hr_meets(hr = Depends(verify_hr)):
+    try:
+        hr_user = await Employee.find_one({"employee_id": hr["employee_id"], "role": Role.HR})
+
+        if not hr_user:
+            raise HTTPException(status_code=403, detail="Error HR not found")
+
+        meets = await Meet.get_meets_with_user(hr["employee_id"])
+
+        meets_list = []
+        for meet in meets:
+            meet_data = {
+                "meet_id": meet.meet_id,
+                "user_id": meet.user_id,
+                "with_user_id": meet.with_user_id,
+                "duration": meet.duration_minutes,
+                "status": meet.status,
+                "scheduled_at": meet.scheduled_at,
+                "meeting_link": meet.meeting_link,
+                "location": meet.location,
+                "notes": meet.notes,
+            }
+            meets_list.append(meet_data)
+        # Format the response
+        return meets_list
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching meets: {str(e)}")
+
+
