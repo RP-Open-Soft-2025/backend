@@ -1,10 +1,3 @@
-name: Deploy to Google App Engine
-
-on:
-  push:
-    branches:
-      - main  # Deploy when code is pushed to the main branch
-
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -13,19 +6,33 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      # Authenticate with Google Cloud using the stored secret
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
       - name: Authenticate with Google Cloud
         uses: google-github-actions/auth@v1
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
 
-      # Set up Google Cloud SDK
       - name: Set up Google Cloud SDK
         uses: google-github-actions/setup-gcloud@v1
         with:
           version: "latest"
 
-      # Deploy the application to Google App Engine
+      - name: Cache Docker layers
+        uses: actions/cache@v3
+        with:
+          path: /tmp/.buildx-cache
+          key: ${{ runner.os }}-buildx-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-buildx-
+
+      - name: Build and push Docker image
+        run: |
+          gcloud auth configure-docker
+          docker build -t gcr.io/backend-deployment-792/my-app:latest .
+          docker push gcr.io/backend-deployment-792/my-app:latest
+
       - name: Deploy to Google App Engine
-        run: gcloud app deploy --quiet
+        run: gcloud app deploy --quiet --image-url=gcr.io/backend-deployment-792/my-app:latest
 
