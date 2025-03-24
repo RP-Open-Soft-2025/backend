@@ -13,13 +13,13 @@ def token_response(token: str):
 secret_key = Settings().secret_key
 
 
-def sign_jwt(employee_id: str, role: str, email: str, account_activated: bool) -> Dict[str, str]:
+def sign_jwt(employee_id: str, role: str, email: str) -> Dict[str, str]:
     expiry = datetime.utcnow() + timedelta(days=15)  # Access token expires in 15 days
     payload = {
         "employee_id": employee_id,
         "email": email,
         "role": role,
-        "account_activated": account_activated,
+        # "account_activated": account_activated,
         "exp": expiry, 
         "iat": datetime.utcnow()  
     }
