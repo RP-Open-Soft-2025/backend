@@ -55,8 +55,15 @@ class MeetResponse(BaseModel):
 
 class SessionResponse(BaseModel):
     session_id: str
+    user_id: str
     chat_id: str
+    status: SessionStatus
     scheduled_at: datetime.datetime
+    created_at: datetime.datetime
+    updated_at: datetime.datetime
+    completed_at: Optional[datetime.datetime] = None
+    cancelled_at: Optional[datetime.datetime] = None
+    cancelled_by: Optional[str] = None
     notes: Optional[str] = None
 
 
@@ -349,10 +356,10 @@ async def get_scheduled_sessions(
         sessions = await Session.find({
             "user_id": employee["employee_id"],
             # "scheduled_at": {"$gt": datetime.datetime.utcnow()},
-            "status": SessionStatus.PENDING
-        }).sort("scheduled_at").to_list()
+            "status": {"$in": [SessionStatus.PENDING, SessionStatus.ACTIVE]}
+        }).to_list()
 
-        return sessions or []  # Return empty list if no sessions found
+        return sessions or []
 
     except Exception as e:
         print(f"Error in get_scheduled_sessions: {str(e)}")
