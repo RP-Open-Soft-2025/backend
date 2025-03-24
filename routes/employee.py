@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 from models.meet import Meet, MeetStatus
 from models.session import Session, SessionStatus
 from models.chat import Chat, Message, SenderType
-from models.employee import Employee, EmotionZone
+from models.employee import Employee, EmotionZone, CompanyData
 from auth.jwt_bearer import JWTBearer
 from auth.jwt_handler import decode_jwt
 import datetime
@@ -55,8 +55,15 @@ class MeetResponse(BaseModel):
 
 class SessionResponse(BaseModel):
     session_id: str
+    user_id: str
     chat_id: str
+    status: SessionStatus
     scheduled_at: datetime.datetime
+    created_at: datetime.datetime
+    updated_at: datetime.datetime
+    completed_at: Optional[datetime.datetime] = None
+    cancelled_at: Optional[datetime.datetime] = None
+    cancelled_by: Optional[str] = None
     notes: Optional[str] = None
 
 
@@ -99,11 +106,16 @@ class UserDetails(BaseModel):
     chat_summary: ChatSummary = Field(default_factory=ChatSummary)
     upcoming_meets: int = 0
     upcoming_sessions: int = 0
-    company_data: Optional[dict] = None
+    company_data: CompanyData = Field(default_factory=CompanyData)
+
+class ChatMessage(BaseModel):
+    sender: str
+    text: str
+    timestamp: datetime.datetime
 
 class ChatMessagesResponse(BaseModel):
     chat_id: str
-    messages: List[Message]
+    messages: List[ChatMessage]
     total_messages: int
     last_updated: datetime.datetime
     chat_mode: str
@@ -120,7 +132,7 @@ async def get_user_profile(
     - Mood score statistics
     - Chat history summary
     - Upcoming meetings and sessions
-    - Company dataaa
+    - Company data
     """
     try:
         # Get employee details
@@ -138,21 +150,29 @@ async def get_user_profile(
             email=employee_data.email,
             role=employee_data.role,
             manager_id=employee_data.manager_id,
-            is_blocked=employee_data.is_blocked
+            is_blocked=employee_data.is_blocked,
+            mood_stats=MoodScoreStats(),
+            chat_summary=ChatSummary(
+                chat_id="",
+                chat_mode="BOT"
+            ),
+            upcoming_meets=0,
+            upcoming_sessions=0,
+            company_data=employee_data.company_data
         )
 
         try:
             # Get all chats for mood analysis
             chats = await Chat.find({"user_id": employee["employee_id"]}).to_list()
             
-            if chats:
+            if chats and len(chats) > 0:
                 # Calculate mood statistics
                 mood_scores = []
                 emotion_distribution = defaultdict(int)
                 total_sessions = 0
                 
                 for chat in chats:
-                    if chat.mood_score > 0:  # Only count sessions with assigned mood scores
+                    if hasattr(chat, 'mood_score') and chat.mood_score and chat.mood_score > 0:
                         mood_scores.append(chat.mood_score)
                         total_sessions += 1
                         
@@ -181,18 +201,53 @@ async def get_user_profile(
                     )
 
                 # Calculate chat summary
-                total_messages = sum(len(chat.messages) for chat in chats)
-                last_chat = max(chats, key=lambda x: x.updated_at) if chats else None
+                total_messages = 0
+                for chat in chats:
+                    if hasattr(chat, 'messages') and chat.messages:
+                        total_messages += len(chat.messages)
                 
-                response.chat_summary = ChatSummary(
-                    chat_id=last_chat.chat_id if last_chat else "",
-                    last_message=last_chat.messages[-1].text if last_chat and last_chat.messages else None,
-                    last_message_time=last_chat.updated_at if last_chat else None,
-                    unread_count=last_chat.unread_count if hasattr(last_chat, 'unread_count') else 0,
-                    total_messages=total_messages,
-                    chat_mode=last_chat.chat_mode.value if hasattr(last_chat, 'chat_mode') else "BOT",
-                    is_escalated=last_chat.is_escalated if hasattr(last_chat, 'is_escalated') else False
-                )
+                # Find latest chat
+                last_chat = None
+                if chats:
+                    try:
+                        last_chat = max(chats, key=lambda x: x.updated_at if hasattr(x, 'updated_at') else datetime.datetime.min)
+                    except Exception as e:
+                        print(f"Error finding last chat: {str(e)}")
+                
+                if last_chat:
+                    last_message = None
+                    last_message_time = None
+                    
+                    try:
+                        if hasattr(last_chat, 'messages') and last_chat.messages and len(last_chat.messages) > 0:
+                            last_message_obj = last_chat.messages[-1]
+                            if hasattr(last_message_obj, 'text'):
+                                last_message = last_message_obj.text
+                            else:
+                                last_message = str(last_message_obj)
+                                
+                            if hasattr(last_message_obj, 'timestamp'):
+                                last_message_time = last_message_obj.timestamp
+                            else:
+                                last_message_time = last_chat.updated_at
+                        else:
+                            last_message_time = last_chat.updated_at if hasattr(last_chat, 'updated_at') else datetime.datetime.now()
+                    except Exception as e:
+                        print(f"Error extracting message data: {str(e)}")
+                    
+                    try:
+                        response.chat_summary = ChatSummary(
+                            chat_id=last_chat.chat_id,
+                            last_message=last_message,
+                            last_message_time=last_message_time,
+                            unread_count=last_chat.unread_count if hasattr(last_chat, 'unread_count') else 0,
+                            total_messages=total_messages,
+                            chat_mode=last_chat.chat_mode.value if hasattr(last_chat, 'chat_mode') else "BOT",
+                            is_escalated=last_chat.is_escalated if hasattr(last_chat, 'is_escalated') else False
+                        )
+                    except Exception as e:
+                        print(f"Error creating chat summary: {str(e)}")
+                        
         except Exception as e:
             # If there's an error getting chat data, continue with default values
             print(f"Error processing chat data: {str(e)}")
@@ -226,10 +281,17 @@ async def get_user_profile(
                 response.company_data = employee_data.company_data.dict()
             except Exception as e:
                 print(f"Error processing company data: {str(e)}")
+                if hasattr(employee_data.company_data, "__dict__"):
+                    response.company_data = employee_data.company_data.__dict__
+                else:
+                    response.company_data = None
 
         return response
 
     except Exception as e:
+        import traceback
+        print(f"Error fetching user profile: {str(e)}")
+        print(traceback.format_exc())
         raise HTTPException(
             status_code=500,
             detail=f"Error fetching user profile: {str(e)}"
@@ -250,11 +312,13 @@ async def get_scheduled_meets(
 
         # Get meetings where user is the organizer
         try:
+            # print('employee_id: ',employee["employee_id"])
             organizer_meets = await Meet.find({
                 "user_id": employee["employee_id"],
-                "scheduled_at": {"$gt": datetime.datetime.utcnow()},
+                # "scheduled_at": {"$gt": datetime.datetime.utcnow()},
                 "status": MeetStatus.SCHEDULED
             }).to_list()
+            print(organizer_meets)
         except Exception as e:
             print(f"Error fetching organizer meetings: {str(e)}")
 
@@ -262,7 +326,7 @@ async def get_scheduled_meets(
         try:
             participant_meets = await Meet.find({
                 "with_user_id": employee["employee_id"],
-                "scheduled_at": {"$gt": datetime.datetime.utcnow()},
+                # "scheduled_at": {"$gt": datetime.datetime.utcnow()},  
                 "status": MeetStatus.SCHEDULED
             }).to_list()
         except Exception as e:
@@ -292,10 +356,10 @@ async def get_scheduled_sessions(
         sessions = await Session.find({
             "user_id": employee["employee_id"],
             # "scheduled_at": {"$gt": datetime.datetime.utcnow()},
-            "status": SessionStatus.PENDING
-        }).sort("scheduled_at").to_list()
+            "status": {"$in": [SessionStatus.PENDING, SessionStatus.ACTIVE]}
+        }).to_list()
 
-        return sessions or []  # Return empty list if no sessions found
+        return sessions or []
 
     except Exception as e:
         print(f"Error in get_scheduled_sessions: {str(e)}")
@@ -357,7 +421,7 @@ async def get_employee_chats(
     try:
         # Get all chats for the employee
         chats = await Chat.find({"user_id": employee["employee_id"]}).to_list()
-        
+
         chat_summaries = []
         for chat in chats:
             # Get the last message if any
@@ -380,8 +444,8 @@ async def get_employee_chats(
             chat_summaries.append(summary)
         
         # Sort chats by last message time (most recent first)
-        chat_summaries.sort(key=lambda x: x.last_message_time or datetime.datetime.min, reverse=True)
-        
+        # chat_summaries.sort(key=lambda x: x.last_message_time or datetime.datetime.min, reverse=True)
+
         # Broadcast that the employee is viewing their chats
         await employee_chat_manager.broadcast_to_employee(employee["employee_id"], {
             "type": "chats_viewed",
@@ -421,6 +485,20 @@ async def get_chat_messages(
             detail="You can only access your own chats"
         )
     
+    # Transform messages to the expected format
+    messages = []
+    try:
+        for msg in chat.messages:
+            messages.append(ChatMessage(
+                sender=msg.sender_type.value,
+                text=msg.text,
+                timestamp=msg.timestamp
+            ))
+    except Exception as e:
+        print(f"Error processing messages: {str(e)}")
+        import traceback
+        print(traceback.format_exc())
+    
     # Broadcast that the employee is viewing the chat
     await employee_chat_manager.broadcast_to_employee(employee["employee_id"], {
         "type": "chat_viewed",
@@ -430,8 +508,8 @@ async def get_chat_messages(
     
     return ChatMessagesResponse(
         chat_id=chat.chat_id,
-        messages=chat.messages,
-        total_messages=len(chat.messages),
+        messages=messages,
+        total_messages=len(messages),
         last_updated=chat.updated_at,
         chat_mode=chat.chat_mode.value if hasattr(chat, 'chat_mode') else "BOT",
         is_escalated=chat.is_escalated if hasattr(chat, 'is_escalated') else False
