@@ -35,29 +35,39 @@ async def user_login(user_credentials: EmployeeSignIn = Body(...)):
     raise HTTPException(status_code=403, detail="Incorrect credentials")
 
 @router.get("/refresh")
-async def refresh_access_token(request: Request, response: Response):
-    cookies = request.cookies
-    print("Received Cookies:", cookies)
-    refresh_token = request.cookies.get("refresh_token")
-    if not refresh_token:
-        raise HTTPException(status_code=401, detail="Refresh token missing")
-
+async def refresh_access_token(request: Request):
+    # Get the refresh token from Authorization header
+    auth_header = request.headers.get("Authorization")
+    if not auth_header or not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Refresh token missing or invalid format")
+    
+    refresh_token = auth_header.split(" ")[1]
+    
     try:
+        # Decode and validate the refresh token
         payload = jwt.decode(refresh_token, secret_key, algorithms=["HS256"])
-        employee_id = payload.get("sub")
+        employee_id = payload.get("employee_id")
         email = payload.get("email")
 
         if not employee_id or not email:
-            raise HTTPException(status_code=401, detail="Invalid refresh token")
+            raise HTTPException(status_code=401, detail="Invalid refresh token payload")
 
-    
-        new_access_token = sign_jwt(employee_id, payload.get("role", ""), email)
+        # Get user from database to ensure they still exist and get their role
+        user = await Employee.find_one(Employee.employee_id == employee_id)
+        if not user:
+            raise HTTPException(status_code=401, detail="User no longer exists")
+
+        # Generate new access token
+        new_access_token = sign_jwt(employee_id, user.role, email)
 
         return {"access_token": new_access_token}
 
     except ExpiredSignatureError:
-        response.delete_cookie("refresh_token")  
         raise HTTPException(status_code=401, detail="Refresh token expired. Please log in again.")
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Invalid refresh token")
+    except Exception as e:
+        raise HTTPException(status_code=401, detail=f"Error refreshing token: {str(e)}")
 
 # Forgot Password Route
 @router.post("/forgot-password")
