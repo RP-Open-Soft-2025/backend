@@ -169,7 +169,7 @@ class Reward(BaseModel):
 class VibeMeter(BaseModel):
     Response_Date: datetime.date = Field(..., description="Date of the vibe response")
     Vibe_Score: int = Field(..., ge=1, le=6, description="Score indicating the employee's vibe, from 1 to 6")
-    Emotion_Zone: EmotionZone = Field(..., description="Emotional zone based on the vibe score")
+    # Emotion_Zone: EmotionZone = Field(..., description="Emotional zone based on the vibe score")
 
     @field_validator("Response_Date", mode="before")
     @classmethod
