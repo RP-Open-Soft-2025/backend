@@ -9,7 +9,7 @@ from config.config import Settings
 from fastapi.responses import JSONResponse
 from jose import JWTError, jwt, ExpiredSignatureError
 from fastapi import Depends
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 
 secret_key = Settings().secret_key
 email_template = Settings().email_template
@@ -77,7 +77,7 @@ last_reset_request = {}
 @router.post("/forgot-password")
 async def forgot_password(forgot_password_request: ForgotPasswordRequest = Body(...)):
     email = forgot_password_request.email.lower()
-    current_time = datetime.utcnow()
+    current_time = datetime.now(UTC)
     if email in last_reset_request:
         last_request_time = last_reset_request[email]
         if current_time - last_request_time < timedelta(minutes=2):
@@ -92,7 +92,7 @@ async def forgot_password(forgot_password_request: ForgotPasswordRequest = Body(
     reset_token = str(uuid.uuid4())
     reset_tokens[reset_token] = {
         "email": user_exists.email,
-        "timestamp": datetime.utcnow()
+        "timestamp": datetime.now(UTC)
     }
     reset_link = f"{email_template}{reset_token}"
     await send_email(user_exists.email, reset_link)
@@ -119,7 +119,7 @@ async def reset_password(reset_token: str, request_data: ResetPasswordRequest):
     while( hash_helper.verify(request_data.new_password, user.password)):
         raise HTTPException(status_code=400, detail="New password cannot be the same as the old password.")
     
-    current_time = datetime.utcnow()
+    current_time = datetime.now(UTC)
     if current_time - timestamp > timedelta(minutes=5):
         del reset_tokens[reset_token]
         raise HTTPException(status_code=410, detail="Reset link has expired")
