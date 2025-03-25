@@ -32,14 +32,14 @@ class AwardType(str, Enum):
     LEADERSHIP = "Leadership Excellence"
 
 
-class EmotionZone(str, Enum):
-    LEANING_SAD = "Leaning to Sad Zone"
-    NEUTRAL = "Neutral Zone (OK)"
-    LEANING_HAPPY = "Leaning to Happy Zone"
-    SAD = "Sad Zone"
-    HAPPY = "Happy Zone"
-    EXCITED = "Excited Zone"
-    FRUSTRATED = "Frustrated Zone"
+# class EmotionZone(str, Enum):
+#     LEANING_SAD = "Leaning to Sad Zone"
+#     NEUTRAL = "Neutral Zone (OK)"
+#     LEANING_HAPPY = "Leaning to Happy Zone"
+#     SAD = "Sad Zone"
+#     HAPPY = "Happy Zone"
+#     EXCITED = "Excited Zone"
+#     FRUSTRATED = "Frustrated Zone"
 
 
 class Role(str, Enum):
