@@ -8,11 +8,12 @@ handlers:
     script: auto
 
 env_variables:
-  DATABASE_URL: "mongodb+srv://udayomsrivastava:oHHFqeCziUf4gfgU@cluster0.vgn8n.mongodb.net/Cluster0?retryWrites=true&w=majority&appName=Cluster0"
-  SECRET_KEY: "guiyfgc837tgf3iw87-012389764"
-  SENDER_EMAIL: "web103856@gmail.com"
-  SENDER_PASSWORD: "ipdtsisbfvjbrmkp"
+  DATABASE_URL=mongodb+srv://udayomsrivastava:oHHFqeCziUf4gfgU@cluster0.vgn8n.mongodb.net/Cluster0?retryWrites=true&w=majority&appName=Cluster0
+  secret_key=guiyfgc837tgf3iw87-012389764
+  sender_email = "web103856@gmail.com"
+  sender_password = "ipdtsisbfvjbrmkp"
+  email_template ="https://employee-frontend-ten-puce.vercel.app/reset-password/"
 
 manual_scaling:
-  instances: 1
+  instances: 4
 
