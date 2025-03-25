@@ -259,7 +259,7 @@ async def get_user_profile(
                     {"user_id": employee["employee_id"]},
                     {"with_user_id": employee["employee_id"]}
                 ],
-                "scheduled_at": {"$gt": datetime.datetime.utcnow()},
+                "scheduled_at": {"$gt": datetime.datetime.now(datetime.UTC)},
                 "status": MeetStatus.SCHEDULED
             }).count()
         except Exception as e:
@@ -269,7 +269,7 @@ async def get_user_profile(
             # Get upcoming sessions count
             response.upcoming_sessions = await Session.find({
                 "user_id": employee["employee_id"],
-                "scheduled_at": {"$gt": datetime.datetime.utcnow()},
+                "scheduled_at": {"$gt": datetime.datetime.now(datetime.UTC)},
                 "status": SessionStatus.PENDING
             }).count()
         except Exception as e:
@@ -315,7 +315,7 @@ async def get_scheduled_meets(
             # print('employee_id: ',employee["employee_id"])
             organizer_meets = await Meet.find({
                 "user_id": employee["employee_id"],
-                # "scheduled_at": {"$gt": datetime.datetime.utcnow()},
+                # "scheduled_at": {"$gt": datetime.datetime.now(datetime.UTC)},
                 "status": MeetStatus.SCHEDULED
             }).to_list()
             print(organizer_meets)
@@ -326,7 +326,7 @@ async def get_scheduled_meets(
         try:
             participant_meets = await Meet.find({
                 "with_user_id": employee["employee_id"],
-                # "scheduled_at": {"$gt": datetime.datetime.utcnow()},  
+                # "scheduled_at": {"$gt": datetime.datetime.now(datetime.UTC)},  
                 "status": MeetStatus.SCHEDULED
             }).to_list()
         except Exception as e:
@@ -355,7 +355,7 @@ async def get_scheduled_sessions(
     try:
         sessions = await Session.find({
             "user_id": employee["employee_id"],
-            # "scheduled_at": {"$gt": datetime.datetime.utcnow()},
+            # "scheduled_at": {"$gt": datetime.datetime.now(datetime.UTC)},
             "status": {"$in": [SessionStatus.PENDING, SessionStatus.ACTIVE]}
         }).to_list()
 
