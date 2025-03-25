@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException, Depends, WebSocket, WebSocketDisconnect
 from typing import List, Dict, Any, Set
 from models.chat import Chat, ChatMode, SenderType, SentimentType
+from models.employee import Employee
 from models.session import Session, SessionStatus
 from auth.jwt_bearer import JWTBearer
 from auth.jwt_handler import decode_jwt
@@ -64,6 +65,17 @@ async def verify_employee(token: str = Depends(JWTBearer())):
             detail="Only employees can access this endpoint"
         )
     return payload
+
+async def verify_user(token: str = Depends(JWTBearer())):
+    """Verify that the user is an employee."""
+    payload = decode_jwt(token)
+    if not payload:
+        raise HTTPException(
+            status_code=403,
+            detail="Only employees can access this endpoint"
+        )
+    return payload
+
 
 @router.websocket("/ws/llm/{chat_id}")
 async def llm_websocket_endpoint(websocket: WebSocket, chat_id: str):
@@ -200,10 +212,26 @@ async def escalate_chat(request: ChatEscalationRequest, current_user: dict = Dep
     
     return {"message": "Chat escalation not required at this time."}
 
+async def verify_admin_or_hr_as_manager(employee, chat):
+    """verify_admin_or_hr_ is manger of employee."""
+
+    if employee["role"] == "admin":
+        return True
+    elif employee["role"] == "hr":
+        employee_id = chat.user_id
+        print('chat is of: ', employee_id)
+        chat_employee = await Employee.get_by_id(employee_id)
+        print('manger is employee is: ', chat_employee.manager_id)
+        print('login employee is: ', employee["employee_id"])
+        if chat_employee.manager_id == employee["employee_id"]:
+            return True
+    return False
+    
+
 @router.get("/history/{chat_id}", response_model=ChatHistoryResponse)
 async def get_chat_history(
     chat_id: str,
-    employee: dict = Depends(verify_employee)
+    employee: dict = Depends(verify_user)
 ):
     """
     Get chat history for the employee.
@@ -213,19 +241,19 @@ async def get_chat_history(
         raise HTTPException(status_code=404, detail="Chat not found")
     
     # Verify employee owns this chat
-    if chat.user_id != employee["employee_id"]:
+    if chat.user_id == employee["employee_id"] or await verify_admin_or_hr_as_manager(employee, chat) :
+        messages = [
+            ChatMessage(
+                sender=msg.sender_type.value,
+                text=msg.text,
+                timestamp=msg.timestamp
+            )
+            for msg in chat.messages
+        ]
+        
+        return ChatHistoryResponse(
+            chatId=chat.chat_id,
+            messages=messages
+        ) 
+    else:
         raise HTTPException(status_code=403, detail="Not authorized to access this chat")
-    
-    messages = [
-        ChatMessage(
-            sender=msg.sender_type.value,
-            text=msg.text,
-            timestamp=msg.timestamp
-        )
-        for msg in chat.messages
-    ]
-    
-    return ChatHistoryResponse(
-        chatId=chat.chat_id,
-        messages=messages
-    ) 
