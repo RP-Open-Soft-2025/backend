@@ -60,14 +60,17 @@ class Activity(BaseModel):
     def parse_date(cls, v):
         if isinstance(v, str):
             try:
-                # Try parsing different date formats
-                if "/" in v:
-                    # Handle format like "12/12/2023"
+                # Handle format like "28-11-2023"
+                if "-" in v:
+                    day, month, year = map(int, v.split("-"))
+                    return datetime.date(year, month, day)
+                # Handle format like "2023-01-02"
+                elif v.count("-") == 2:
+                    return datetime.date.fromisoformat(v)
+                # Handle format like "4/23/2024"
+                elif "/" in v:
                     month, day, year = map(int, v.split("/"))
                     return datetime.date(year, month, day)
-                elif "-" in v:
-                    # Handle format like "2023-12-12"
-                    return datetime.date.fromisoformat(v)
                 else:
                     raise ValueError(f"Unsupported date format: {v}")
             except Exception as e:
@@ -77,6 +80,9 @@ class Activity(BaseModel):
         elif isinstance(v, datetime.datetime):
             return v.date()
         raise ValueError(f"Invalid date type: {type(v)}")
+
+
+
 
 
 class Leave(BaseModel):
@@ -91,7 +97,7 @@ class Leave(BaseModel):
         if isinstance(v, str):
             try:
                 if "/" in v:
-                    month, day, year = map(int, v.split("/"))
+                    year, day ,month = map(int, v.split("-"))
                     return datetime.date(year, month, day)
                 elif "-" in v:
                     return datetime.date.fromisoformat(v)
@@ -118,7 +124,7 @@ class Onboarding(BaseModel):
         if isinstance(v, str):
             try:
                 if "/" in v:
-                    month, day, year = map(int, v.split("/"))
+                    year,month,day = map(int, v.split("-"))
                     return datetime.date(year, month, day)
                 elif "-" in v:
                     return datetime.date.fromisoformat(v)
@@ -151,7 +157,7 @@ class Reward(BaseModel):
         if isinstance(v, str):
             try:
                 if "/" in v:
-                    month, day, year = map(int, v.split("/"))
+                    year,month,day = map(int, v.split("-"))
                     return datetime.date(year, month, day)
                 elif "-" in v:
                     return datetime.date.fromisoformat(v)
@@ -176,11 +182,10 @@ class VibeMeter(BaseModel):
     def parse_date(cls, v):
         if isinstance(v, str):
             try:
-                if "/" in v:
-                    month, day, year = map(int, v.split("/"))
+                # Handle format like "28-11-2023"
+                if "-" in v:
+                    day, month, year = map(int, v.split("-"))
                     return datetime.date(year, month, day)
-                elif "-" in v:
-                    return datetime.date.fromisoformat(v)
                 else:
                     raise ValueError(f"Unsupported date format: {v}")
             except Exception as e:
@@ -190,6 +195,7 @@ class VibeMeter(BaseModel):
         elif isinstance(v, datetime.datetime):
             return v.date()
         raise ValueError(f"Invalid date type: {type(v)}")
+
 
 
 class CompanyData(BaseModel):
