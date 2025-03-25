@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 from models.meet import Meet, MeetStatus
 from models.session import Session, SessionStatus
 from models.chat import Chat, Message, SenderType
-from models.employee import Employee, EmotionZone, CompanyData
+from models.employee import Employee, CompanyData
 from auth.jwt_bearer import JWTBearer
 from auth.jwt_handler import decode_jwt
 import datetime
@@ -176,17 +176,7 @@ async def get_user_profile(
                         mood_scores.append(chat.mood_score)
                         total_sessions += 1
                         
-                        # Map mood score to emotion zone
-                        if chat.mood_score <= 2:
-                            emotion_distribution[EmotionZone.SAD] += 1
-                        elif chat.mood_score <= 3:
-                            emotion_distribution[EmotionZone.LEANING_SAD] += 1
-                        elif chat.mood_score == 4:
-                            emotion_distribution[EmotionZone.NEUTRAL] += 1
-                        elif chat.mood_score <= 5:
-                            emotion_distribution[EmotionZone.LEANING_HAPPY] += 1
-                        else:
-                            emotion_distribution[EmotionZone.HAPPY] += 1
+                        
 
                 # Calculate mood stats if there are valid scores
                 if mood_scores:
