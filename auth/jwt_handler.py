@@ -1,5 +1,5 @@
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 from typing import Dict
 import jwt
 from config.config import Settings
@@ -14,14 +14,14 @@ secret_key = Settings().secret_key
 
 
 def sign_jwt(employee_id: str, role: str, email: str) -> Dict[str, str]:
-    expiry = datetime.utcnow() + timedelta(days=15)  # Access token expires in 15 days
+    expiry = datetime.now(UTC) + timedelta(days=15)  # Access token expires in 15 days
     payload = {
         "employee_id": employee_id,
         "email": email,
         "role": role,
         # "account_activated": account_activated,
         "exp": expiry, 
-        "iat": datetime.utcnow()  
+        "iat": datetime.now(UTC)  
     }
     try:
         token = jwt.encode(payload, secret_key, algorithm="HS256")
@@ -57,8 +57,8 @@ def decode_jwt(token: str) -> dict:
 
 
 def refresh_jwt(employee_id: str, email: str):
-    expiration = datetime.utcnow() + timedelta(days=30)  # Refresh token expires in 2 days
-    # expiration = datetime.utcnow() + timedelta(minutes=2)  # Refresh token expires in 2 minutes
+    expiration = datetime.now(UTC) + timedelta(days=30)  # Refresh token expires in 2 days
+    # expiration = datetime.now(UTC) + timedelta(minutes=2)  # Refresh token expires in 2 minutes
     payload = {"employee_id": employee_id, "email": email, "exp": expiration}
 
     try:
