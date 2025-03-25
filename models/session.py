@@ -18,8 +18,8 @@ class Session(Document):
     chat_id: str = Field(..., description="ID of the chat associated with this session")
     status: SessionStatus = Field(default=SessionStatus.PENDING, description="Current status of the session")
     scheduled_at: datetime.datetime = Field(..., description="When the session is scheduled for")
-    created_at: datetime.datetime = Field(default_factory=datetime.datetime.utcnow, description="When the session was created")
-    updated_at: datetime.datetime = Field(default_factory=datetime.datetime.utcnow, description="When the session was last updated")
+    created_at: datetime.datetime = Field(default_factory=lambda: datetime.datetime.now(datetime.UTC), description="When the session was created")
+    updated_at: datetime.datetime = Field(default_factory=lambda: datetime.datetime.now(datetime.UTC), description="When the session was last updated")
     completed_at: Optional[datetime.datetime] = Field(default=None, description="When the session was completed")
     cancelled_at: Optional[datetime.datetime] = Field(default=None, description="When the session was cancelled")
     cancelled_by: Optional[str] = Field(default=None, description="Employee ID of who cancelled the session")
@@ -65,22 +65,22 @@ class Session(Document):
         if self.status != SessionStatus.PENDING:
             raise ValueError("Only pending sessions can be started")
         self.status = SessionStatus.ACTIVE
-        self.updated_at = datetime.datetime.utcnow()
+        self.updated_at = datetime.datetime.now(datetime.UTC)
         await self.save()
 
     async def complete_session(self):
         if self.status != SessionStatus.ACTIVE:
             raise ValueError("Only active sessions can be completed")
         self.status = SessionStatus.COMPLETED
-        self.completed_at = datetime.datetime.utcnow()
-        self.updated_at = datetime.datetime.utcnow()
+        self.completed_at = datetime.datetime.now(datetime.UTC)
+        self.updated_at = datetime.datetime.now(datetime.UTC)
         await self.save()
 
     async def cancel_session(self, cancelled_by: str):
         if self.status not in [SessionStatus.PENDING, SessionStatus.ACTIVE]:
             raise ValueError("Only pending or active sessions can be cancelled")
         self.status = SessionStatus.CANCELLED
-        self.cancelled_at = datetime.datetime.utcnow()
+        self.cancelled_at = datetime.datetime.now(datetime.UTC)
         self.cancelled_by = cancelled_by
-        self.updated_at = datetime.datetime.utcnow()
+        self.updated_at = datetime.datetime.now(datetime.UTC)
         await self.save() 

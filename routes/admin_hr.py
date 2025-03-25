@@ -78,7 +78,7 @@ async def block_user(
 
     # Block the employee
     employee.is_blocked = True
-    employee.blocked_at = datetime.datetime.utcnow()
+    employee.blocked_at = datetime.datetime.now(datetime.UTC)
     employee.blocked_by = admin_hr["employee_id"]
     employee.blocked_reason = block_data.reason
 
@@ -215,7 +215,7 @@ async def complete_session(
     try:
         # Update session status
         session.status = SessionStatus.COMPLETED
-        session.completed_at = datetime.datetime.utcnow()
+        session.completed_at = datetime.datetime.now(datetime.UTC)
         session.notes = session_data.notes
         await session.save()
 
