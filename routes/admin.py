@@ -502,3 +502,15 @@ async def get_meets(admin: dict = Depends(verify_admin)):
             status_code=500,
             detail=f"Error fetching meets: {str(e)}"
         )
+
+@router.get('/user-det/{userid}', tags=["Admin"])
+async def get_user(userid: str, admin: dict = Depends(verify_admin)):
+    try:
+        user_det = await Employee.find_one({"employee_id": userid})
+        return user_det
+    except Exception as e:
+        print(f"Error fetching meets: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error fetching meets: {str(e)}"
+        )
