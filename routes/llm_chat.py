@@ -151,6 +151,9 @@ async def initiate_chat(request: ChatStatusRequest, current_user: dict = Depends
     if not chat:
         raise HTTPException(status_code=404, detail="Chat not found")
     
+    # Update created_at to current time
+    chat.created_at = datetime.now().isoformat()
+    
     # await chat.update_chat_mode(request.status)
     session = await Session.find_one({"chat_id": chat.chat_id})
     if not session:
@@ -159,8 +162,11 @@ async def initiate_chat(request: ChatStatusRequest, current_user: dict = Depends
     session.status = SessionStatus.ACTIVE
     await session.save()
 
-    bot_response = "Thank you for reaching out. I'm here to help. Can you tell me more about what's on your mind?"
+    bot_response = "Good Morning. First Question?"
     await chat.add_message(SenderType.BOT, bot_response)
+    
+    # Save the chat with updated created_at
+    await chat.save()
     
     # Broadcast status update
     await llm_manager.broadcast_to_chat(request.chatId, {
