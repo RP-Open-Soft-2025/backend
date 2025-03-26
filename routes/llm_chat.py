@@ -159,7 +159,7 @@ async def initiate_chat(request: ChatStatusRequest, current_user: dict = Depends
     session.status = SessionStatus.ACTIVE
     await session.save()
 
-    bot_response = "Thank you for reaching out. I'm here to help. Can you tell me more about what's on your mind?"
+    bot_response = "Good Morning. First Question?"
     await chat.add_message(SenderType.BOT, bot_response)
     
     # Broadcast status update
