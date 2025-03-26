@@ -15,5 +15,5 @@ env_variables:
   email_template: "https://employee-frontend-ten-puce.vercel.app/reset-password/"
 
 manual_scaling:
-  instances: 4
+  instances: 2
 
