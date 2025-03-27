@@ -75,7 +75,7 @@ class EmployeeData(BaseModel):
                         {
                             "response_date": "2023-10-05",
                             "vibe_score": 5,
-                            "emotion_zone": "Happy Zone"
+                            # "emotion_zone": "Happy Zone"
                         }
                     ]
                 }

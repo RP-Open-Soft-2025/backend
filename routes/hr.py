@@ -58,7 +58,7 @@ async def list_assigned_users(hr: dict = Depends(verify_hr)):
                         {
                             "timestamp": vibe.Response_Date.isoformat(),
                             "Vibe_Score": vibe.Vibe_Score,
-                            "Emotion_Zone": vibe.Emotion_Zone
+                            # "Emotion_Zone": vibe.Emotion_Zone
                         }
                         for vibe in employee.company_data.vibemeter
                     ]
