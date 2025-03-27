@@ -39,9 +39,9 @@ jobs:
       - name: Build and push Docker image
         run: |
           gcloud auth configure-docker
-          docker build -t gcr.io/backend-deployment-792/my-app:latest .
-          docker push gcr.io/backend-deployment-792/my-app:latest
+          docker build -t gcr.io/velvety-ray-454718-b8/my-app:latest .
+          docker push gcr.io/velvety-ray-454718-b8/my-app:latest
 
       - name: Deploy to Google App Engine
-        run: gcloud app deploy --quiet --image-url=gcr.io/backend-deployment-792/my-app:latest
+        run: gcloud app deploy --quiet --image-url=gcr.io/velvety-ray-454718-b8/my-app:latest
 
