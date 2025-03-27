@@ -514,3 +514,21 @@ async def get_chat_messages(
         chat_mode=chat.chat_mode.value if hasattr(chat, 'chat_mode') else "BOT",
         is_escalated=chat.is_escalated if hasattr(chat, 'is_escalated') else False
     )
+
+@router.get("/ping")
+async def ping_user(employee: dict = Depends(verify_employee)):
+    """
+    Update the last known ping time for the employee.
+    """
+    emp_id = employee["employee_id"]
+    try:
+        await Employee.update(
+            {"employee_id": emp_id},
+            {"$set": {"last_ping_time": datetime.datetime.now()}}
+        )
+        return {"message": "Ping time updated successfully"}
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error updating ping time: {str(e)}"
+        )
