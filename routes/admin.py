@@ -369,7 +369,7 @@ async def list_users(admin: dict = Depends(verify_admin)):
                             {
                                 "timestamp": vibe.Response_Date.isoformat(),
                                 "Vibe_Score": vibe.Vibe_Score,
-                                "Emotion_Zone": vibe.Emotion_Zone
+                                # "Emotion_Zone": vibe.Emotion_Zone
                             }
                             for vibe in (employee.company_data.vibemeter if hasattr(employee, 'company_data') and employee.company_data and hasattr(employee.company_data, 'vibemeter') else [])
                         ]
