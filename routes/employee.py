@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 from models.meet import Meet, MeetStatus
 from models.session import Session, SessionStatus
 from models.chat import Chat, Message, SenderType
-from models.employee import Employee, EmotionZone, CompanyData
+from models.employee import Employee, CompanyData
 from auth.jwt_bearer import JWTBearer
 from auth.jwt_handler import decode_jwt
 import datetime
@@ -70,13 +70,13 @@ class SessionResponse(BaseModel):
 class MoodScoreStats(BaseModel):
     average_score: float = 0.0
     total_sessions: int = 0
-    emotion_distribution: dict[str, int] = Field(default_factory=lambda: {
-        "Sad Zone": 0,
-        "Leaning to Sad Zone": 0,
-        "Neutral Zone (OK)": 0,
-        "Leaning to Happy Zone": 0,
-        "Happy Zone": 0
-    })
+    # emotion_distribution: dict[str, int] = Field(default_factory=lambda: {
+    #     "Sad Zone": 0,
+    #     "Leaning to Sad Zone": 0,
+    #     "Neutral Zone (OK)": 0,
+    #     "Leaning to Happy Zone": 0,
+    #     "Happy Zone": 0
+    # })
     last_5_scores: List[int] = Field(default_factory=list)
 
 
@@ -168,7 +168,7 @@ async def get_user_profile(
             if chats and len(chats) > 0:
                 # Calculate mood statistics
                 mood_scores = []
-                emotion_distribution = defaultdict(int)
+                # emotion_distribution = defaultdict(int)
                 total_sessions = 0
                 
                 for chat in chats:
@@ -176,17 +176,7 @@ async def get_user_profile(
                         mood_scores.append(chat.mood_score)
                         total_sessions += 1
                         
-                        # Map mood score to emotion zone
-                        if chat.mood_score <= 2:
-                            emotion_distribution[EmotionZone.SAD] += 1
-                        elif chat.mood_score <= 3:
-                            emotion_distribution[EmotionZone.LEANING_SAD] += 1
-                        elif chat.mood_score == 4:
-                            emotion_distribution[EmotionZone.NEUTRAL] += 1
-                        elif chat.mood_score <= 5:
-                            emotion_distribution[EmotionZone.LEANING_HAPPY] += 1
-                        else:
-                            emotion_distribution[EmotionZone.HAPPY] += 1
+                        
 
                 # Calculate mood stats if there are valid scores
                 if mood_scores:
@@ -196,7 +186,7 @@ async def get_user_profile(
                     response.mood_stats = MoodScoreStats(
                         average_score=average_score,
                         total_sessions=total_sessions,
-                        emotion_distribution=dict(emotion_distribution),
+                        # emotion_distribution=dict(emotion_distribution),
                         last_5_scores=last_5_scores
                     )
 
