@@ -511,11 +511,9 @@ async def ping_user(employee: dict = Depends(verify_employee)):
     Update the last known ping time for the employee.
     """
     emp_id = employee["employee_id"]
+    print('emp_id', emp_id)
     try:
-        await Employee.update(
-            {"employee_id": emp_id},
-            {"$set": {"last_ping_time": datetime.datetime.now()}}
-        )
+        await Employee.find_one({"employee_id": emp_id}).update_one({"$set": {"last_ping": datetime.datetime.now()}})
         return {"message": "Ping time updated successfully"}
     except Exception as e:
         raise HTTPException(
