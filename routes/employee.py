@@ -70,13 +70,13 @@ class SessionResponse(BaseModel):
 class MoodScoreStats(BaseModel):
     average_score: float = 0.0
     total_sessions: int = 0
-    emotion_distribution: dict[str, int] = Field(default_factory=lambda: {
-        "Sad Zone": 0,
-        "Leaning to Sad Zone": 0,
-        "Neutral Zone (OK)": 0,
-        "Leaning to Happy Zone": 0,
-        "Happy Zone": 0
-    })
+    # emotion_distribution: dict[str, int] = Field(default_factory=lambda: {
+    #     "Sad Zone": 0,
+    #     "Leaning to Sad Zone": 0,
+    #     "Neutral Zone (OK)": 0,
+    #     "Leaning to Happy Zone": 0,
+    #     "Happy Zone": 0
+    # })
     last_5_scores: List[int] = Field(default_factory=list)
 
 
@@ -168,7 +168,7 @@ async def get_user_profile(
             if chats and len(chats) > 0:
                 # Calculate mood statistics
                 mood_scores = []
-                emotion_distribution = defaultdict(int)
+                # emotion_distribution = defaultdict(int)
                 total_sessions = 0
                 
                 for chat in chats:
@@ -186,7 +186,7 @@ async def get_user_profile(
                     response.mood_stats = MoodScoreStats(
                         average_score=average_score,
                         total_sessions=total_sessions,
-                        emotion_distribution=dict(emotion_distribution),
+                        # emotion_distribution=dict(emotion_distribution),
                         last_5_scores=last_5_scores
                     )
 
