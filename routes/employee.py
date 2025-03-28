@@ -514,7 +514,7 @@ async def ping_user(employee: dict = Depends(verify_employee)):
     print('emp_id', emp_id)
     try:
         await Employee.find_one({"employee_id": emp_id}).update_one({"$set": {"last_ping": datetime.datetime.now()}})
-        return {"message": "Ping time updated successfully"}
+        return {"message": "Ping time updated successfully", "notifications": [{"title": "New Meer", "description": f"Hello ${emp_id} a new meet has been scheduled for you"}]}
     except Exception as e:
         raise HTTPException(
             status_code=500,
