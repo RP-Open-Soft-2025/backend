@@ -88,6 +88,7 @@ class ChatSummary(BaseModel):
     total_messages: int = 0
     chat_mode: str
     is_escalated: bool = False
+    created_at: Optional[datetime.datetime] = None
 
 
 class EmployeeChatsResponse(BaseModel):
@@ -407,6 +408,7 @@ async def get_employee_chats(
     - Total messages
     - Chat mode
     - Escalation status
+    - Chat Creation time
     """
     try:
         # Get all chats for the employee
@@ -429,7 +431,8 @@ async def get_employee_chats(
                 unread_count=chat.unread_count if hasattr(chat, 'unread_count') else 0,
                 total_messages=len(chat.messages),
                 chat_mode=chat.chat_mode.value if hasattr(chat, 'chat_mode') else "BOT",
-                is_escalated=chat.is_escalated if hasattr(chat, 'is_escalated') else False
+                is_escalated=chat.is_escalated if hasattr(chat, 'is_escalated') else False,
+                created_at=chat.created_at
             )
             chat_summaries.append(summary)
         
