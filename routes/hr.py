@@ -62,7 +62,8 @@ async def list_assigned_users(hr: dict = Depends(verify_hr)):
                         }
                         for vibe in employee.company_data.vibemeter
                     ]
-                }
+                },
+                "lastPing": employee.last_ping.isoformat()
             }
             users.append(user_data)
         

@@ -373,7 +373,8 @@ async def list_users(admin: dict = Depends(verify_admin)):
                             }
                             for vibe in (employee.company_data.vibemeter if hasattr(employee, 'company_data') and employee.company_data and hasattr(employee.company_data, 'vibemeter') else [])
                         ]
-                    }
+                    },
+                    "lastPing": employee.last_ping.isoformat()
                 }
                 users.append(user_data)
             except Exception as e:
