@@ -11,6 +11,7 @@ from auth.jwt_bearer import JWTBearer
 from auth.jwt_handler import decode_jwt
 import datetime
 from collections import defaultdict
+from models.notification import Notification, NotificationStatus
 
 
 router = APIRouter()
@@ -19,27 +20,11 @@ router = APIRouter()
 async def verify_employee(token: str = Depends(JWTBearer())):
     """Verify that the user is an employee."""
     payload = decode_jwt(token)
-    if not payload:
+    if not payload or payload.get("role") != "employee":
         raise HTTPException(
-            status_code=401,
-            detail="Invalid authentication credentials"
+            status_code=403,
+            detail="Only employees can access this endpoint"
         )
-
-    # use the payload.employee_id to get the employee details
-    employee = await Employee.get_by_id(payload["employee_id"])
-    if not employee:
-        raise HTTPException(
-            status_code=401,
-            detail="Employee not found"
-        )
-
-    # check if the employee is blocked
-    if employee.is_blocked:
-        raise HTTPException(
-            status_code=401,
-            detail="Employee is blocked"
-        )
-
     return payload
 
 
@@ -121,6 +106,15 @@ class ChatMessagesResponse(BaseModel):
     last_updated: datetime.datetime
     chat_mode: str
     is_escalated: bool = False
+
+
+class NotificationResponse(BaseModel):
+    id: str
+    employee_id: str
+    title: str
+    description: str
+    created_at: datetime.datetime
+    status: NotificationStatus
 
 
 @router.get("/profile", response_model=UserDetails, tags=["Employee"])
@@ -508,16 +502,36 @@ async def get_chat_messages(
         is_escalated=chat.is_escalated if hasattr(chat, 'is_escalated') else False
     )
 
-@router.get("/ping")
+@router.get("/ping", response_model=dict)
 async def ping_user(employee: dict = Depends(verify_employee)):
     """
-    Update the last known ping time for the employee.
+    Update the last known ping time for the employee and return notifications.
     """
     emp_id = employee["employee_id"]
-    print('emp_id', emp_id)
     try:
+        # Update last ping time
         await Employee.find_one({"employee_id": emp_id}).update_one({"$set": {"last_ping": datetime.datetime.now()}})
-        return {"message": "Ping time updated successfully", "notifications": [{"title": "New Meer", "description": f"Hello ${emp_id} a new meet has been scheduled for you"}]}
+        
+        # Get all notifications for the employee
+        notifications = await Notification.get_notifications_by_employee(emp_id)
+        
+        # Format notifications for response
+        notification_list = [
+            NotificationResponse(
+                id=str(notification.id),
+                employee_id=notification.employee_id,
+                title=notification.title,
+                description=notification.description,
+                created_at=notification.created_at,
+                status=notification.status
+            )
+            for notification in notifications
+        ]
+        
+        return {
+            "message": "Ping time updated successfully",
+            "notifications": notification_list
+        }
     except Exception as e:
         raise HTTPException(
             status_code=500,

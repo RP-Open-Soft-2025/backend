@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter, HTTPException, Depends
 from typing import List, Optional
-from datetime import datetime
+import datetime
 from pydantic import BaseModel, EmailStr, Field
 from models.session import Session, SessionStatus
 from models.employee import Employee, Role
@@ -11,6 +11,7 @@ from models.meet import Meet
 from auth.jwt_bearer import JWTBearer
 from auth.jwt_handler import decode_jwt
 from passlib.context import CryptContext
+from models.notification import Notification, NotificationStatus
 
 router = APIRouter()
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -28,7 +29,7 @@ class DeleteUserRequest(BaseModel):
     reason: Optional[str] = Field(default=None, description="Reason for deleting the user")
 
 class CreateSessionRequest(BaseModel):
-    scheduled_at: datetime = Field(..., description="When the session is scheduled for")
+    scheduled_at: datetime.datetime = Field(..., description="When the session is scheduled for")
     notes: Optional[str] = Field(default=None, description="Any additional notes about the session")
 
 class SessionResponse(BaseModel):
@@ -36,11 +37,23 @@ class SessionResponse(BaseModel):
     employee_id: str
     chat_id: str
     status: str
-    scheduled_at: datetime
+    scheduled_at: datetime.datetime
 
 class ReassignHrRequest(BaseModel):
     newHrId: str = Field(..., description="ID of the new HR to assign")
 
+class NotificationCreate(BaseModel):
+    employee_id: str
+    title: str
+    description: str
+
+class NotificationResponse(BaseModel):
+    id: str
+    employee_id: str
+    title: str
+    description: str
+    created_at: datetime.datetime
+    status: NotificationStatus
 
 async def verify_admin(token: str = Depends(JWTBearer())):
     """Verify that the user is an admin."""
@@ -515,3 +528,36 @@ async def get_user(userid: str, admin: dict = Depends(verify_admin)):
             status_code=500,
             detail=f"Error fetching meets: {str(e)}"
         )
+
+@router.post("/notification/create", response_model=NotificationResponse)
+async def create_notification(
+    notification: NotificationCreate,
+    admin: dict = Depends(verify_admin)
+):
+    """
+    Create a new notification for an employee (admin only).
+    """
+    # Verify employee exists
+    employee = await Employee.get_by_id(notification.employee_id)
+    if not employee:
+        raise HTTPException(
+            status_code=404,
+            detail="Employee not found"
+        )
+    
+    # Create notification
+    new_notification = Notification(
+        employee_id=notification.employee_id,
+        title=notification.title,
+        description=notification.description
+    )
+    await new_notification.save()
+    
+    return NotificationResponse(
+        id=str(new_notification.id),
+        employee_id=new_notification.employee_id,
+        title=new_notification.title,
+        description=new_notification.description,
+        created_at=new_notification.created_at,
+        status=new_notification.status
+    )
