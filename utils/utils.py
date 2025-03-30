@@ -4,11 +4,24 @@ from email.mime.multipart import MIMEMultipart
 from fastapi import HTTPException
 import logging
 from config.config import Settings
+
 async def send_email(to_email: str, reset_link: str):
     sender_email = Settings().sender_email
     sender_password = Settings().sender_password
     subject = "Password Reset Request"
-    body = f"Click the link to reset your password: {reset_link}"
+    body = f"""Dear User,
+
+You have requested to reset your password. Please click the link below to proceed:
+
+{reset_link}
+
+Important Notes:
+- This link will expire in 5 minutes for security reasons
+- If you did not request this password reset, please ignore this email
+- For security reasons, please change your password immediately after clicking the link
+
+Best regards,
+Deloitte"""
 
     msg = MIMEMultipart()
     msg["From"] = sender_email
