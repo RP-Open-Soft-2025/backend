@@ -242,7 +242,7 @@ async def get_chat_history(
     user_id = chat[0].user_id
 
     user = await Employee.find_one({"employee_id": user_id})
-    if employee.get("role") == "hr" and user["manager_id"] != employee.get("employee_id"):
+    if employee.get("role") == "hr" and user.manager_id != employee.get("employee_id"):
         raise HTTPException(
             status_code=404,
             detail="HR Cannot perform this actions"
