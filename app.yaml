@@ -13,7 +13,7 @@ env_variables:
   sender_email: "web103856@gmail.com"
   sender_password: "ipdtsisbfvjbrmkp"
   email_template: "https://employee-frontend-ten-puce.vercel.app/reset-password/"
-
+  LLM_ADDR: "http://34.93.78.113/"
 manual_scaling:
   instances: 2
 
