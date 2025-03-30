@@ -12,6 +12,7 @@ from auth.jwt_handler import decode_jwt
 import datetime
 from collections import defaultdict
 from models.notification import Notification, NotificationStatus
+from bson import ObjectId
 
 
 router = APIRouter()
@@ -536,4 +537,50 @@ async def ping_user(employee: dict = Depends(verify_employee)):
         raise HTTPException(
             status_code=500,
             detail=f"Error updating ping time: {str(e)}"
+        )
+
+@router.patch("/notification/{notification_id}/read", response_model=NotificationResponse)
+async def mark_notification_read(
+    notification_id: str,
+    employee: dict = Depends(verify_employee)
+):
+    """
+    Mark a notification as read.
+    Only the employee who owns the notification can mark it as read.
+    """
+    try:
+        # Convert string ID to ObjectId
+        notification_object_id = ObjectId(notification_id)
+        
+        # Get the notification
+        notification = await Notification.find_one({"_id": notification_object_id})
+        if not notification:
+            raise HTTPException(
+                status_code=404,
+                detail="Notification not found"
+            )
+        
+        # Verify the notification belongs to the employee
+        if notification.employee_id != employee["employee_id"]:
+            raise HTTPException(
+                status_code=403,
+                detail="You can only mark your own notifications as read"
+            )
+        
+        # Mark as read
+        notification.status = NotificationStatus.READ
+        await notification.save()
+        
+        return NotificationResponse(
+            id=str(notification.id),
+            employee_id=notification.employee_id,
+            title=notification.title,
+            description=notification.description,
+            created_at=notification.created_at,
+            status=notification.status
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error marking notification as read: {str(e)}"
         )
