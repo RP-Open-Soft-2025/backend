@@ -125,11 +125,14 @@ async def send_message(
     # TODO: Implement actual LLM integration here
     # For now, using placeholder response
     session_id = session.session_id
-    data = {"session_id": session_id, "message": request.message}
-    headers = {'Content-Type': 'application/json'}
-    response = requests.post(f"{llm_add}/message", json=data, headers=headers)
-    bot_response = response.json()["message"]
-    # bot_response = "Thank you for reaching out. I'm here to help. Can you tell me more about what's on your mind?"
+    bot_response = "Thank you for reaching out. I'm here to help. Can you tell me more about what's on your mind?"
+    try:
+        data = {"session_id": session_id, "message": request.message}
+        headers = {'Content-Type': 'application/json'}
+        response = requests.post(f"{llm_add}/message", json=data, headers=headers)
+        bot_response = response.json()["message"]
+    except Exception as e:
+        HTTPException(500, detail=str(e))
     await chat.add_message(SenderType.BOT, bot_response)
     
     # Broadcast bot response
@@ -171,10 +174,13 @@ async def initiate_chat(request: ChatStatusRequest, current_user: dict = Depends
     session.status = SessionStatus.ACTIVE
     await session.save()
     session_id = session.session_id
-    response = requests.post(f"{llm_add}/start_session", data={"session_id": session_id, "employee_id": chat.user_id})
-    bot_response = response["message"]
-
-    #bot_response = "Good Morning. First Question?"
+    bot_response = "Good Morning. First Question?"
+    try:
+        response = requests.post(f"{llm_add}/start_session", data={"session_id": session_id, "employee_id": chat.user_id})
+        bot_response = response.json()["message"]
+    except Exception as e:
+        HTTPException(500, detail=str(e))
+        
     await chat.add_message(SenderType.BOT, bot_response)
     
     # Save the chat with updated created_at
