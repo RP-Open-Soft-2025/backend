@@ -8,6 +8,8 @@ from pydantic import BaseModel
 from datetime import datetime
 from config.config import Settings
 import requests
+from routes.admin_hr import verify_admin_or_hr
+from routes.employee import ChatSummary, EmployeeChatsResponse 
 
 router = APIRouter()
 llm_add = Settings().LLM_ADDR
@@ -224,32 +226,44 @@ async def escalate_chat(request: ChatEscalationRequest, current_user: dict = Dep
     
     return {"message": "Chat escalation not required at this time."}
 
-@router.get("/history/{chat_id}", response_model=ChatHistoryResponse)
+@router.get("/history/{chat_id}", response_model=List[ChatSummary])
 async def get_chat_history(
     chat_id: str,
-    employee: dict = Depends(verify_employee)
+    employee: dict = Depends(verify_admin_or_hr)
 ):
     """
     Get chat history for the employee.
     """
-    chat = await Chat.get_chat_by_id(chat_id)
+    chat = Chat.find({"chat_id": chat_id})
+    chat = await chat.to_list()
     if not chat:
         raise HTTPException(status_code=404, detail="Chat not found")
+    user_id = chat[0].user_id
+    try:
+        # Get all chats for the employee
+        chats = Chat.find({"user_id": user_id})
+        chats = await chats.to_list()
+        chat_summaries = []
+        for chat in chats:
+            last_message = chat.messages[-1].text if chat.messages else None
+            last_message_time = chat.messages[-1].timestamp if chat.messages else None
+            
+            summary = ChatSummary(
+                chat_id=chat.chat_id,
+                last_message=last_message,
+                last_message_time=last_message_time,
+                unread_count=getattr(chat, 'unread_count', 0),
+                total_messages=len(chat.messages) if chat.messages else 0,
+                chat_mode=getattr(chat, 'chat_mode', 'BOT').value if hasattr(chat, 'chat_mode') else "BOT",
+                is_escalated=getattr(chat, 'is_escalated', False),
+                created_at=chat.created_at
+            )
+            chat_summaries.append(summary)
+        
+        return chat_summaries
     
-    # Verify employee owns this chat
-    if chat.user_id != employee["employee_id"]:
-        raise HTTPException(status_code=403, detail="Not authorized to access this chat")
-    
-    messages = [
-        ChatMessage(
-            sender=msg.sender_type.value,
-            text=msg.text,
-            timestamp=msg.timestamp
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error fetching employee chats: {str(e)}"
         )
-        for msg in chat.messages
-    ]
-    
-    return ChatHistoryResponse(
-        chatId=chat.chat_id,
-        messages=messages
-    ) 
