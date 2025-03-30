@@ -10,6 +10,7 @@ from config.config import Settings
 import requests
 from routes.admin_hr import verify_admin_or_hr
 from routes.employee import ChatSummary, EmployeeChatsResponse 
+from models import Employee
 
 router = APIRouter()
 llm_add = Settings().LLM_ADDR
@@ -239,6 +240,13 @@ async def get_chat_history(
     if not chat:
         raise HTTPException(status_code=404, detail="Chat not found")
     user_id = chat[0].user_id
+
+    user = await Employee.find_one({"employee_id": user_id})
+    if employee.get("role") == "hr" and user["manager_id"] != employee.get("employee_id"):
+        raise HTTPException(
+            status_code=404,
+            detail="HR Cannot perform this actions"
+        )
     try:
         # Get all chats for the employee
         chats = Chat.find({"user_id": user_id})
