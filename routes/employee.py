@@ -117,10 +117,18 @@ class NotificationResponse(BaseModel):
     created_at: datetime.datetime
     status: NotificationStatus
 
-
+async def verify_if_user(token: str = Depends(JWTBearer())):
+    """Verify that the user is an employee."""
+    payload = decode_jwt(token)
+    if not payload:
+        raise HTTPException(
+            status_code=403,
+            detail="Only employees can access this endpoint"
+        )
+    return payload
 @router.get("/profile", response_model=UserDetails, tags=["Employee"])
 async def get_user_profile(
-    employee: dict = Depends(verify_employee)
+    employee: dict = Depends(verify_if_user)
 ):
     """
     Get detailed information about the current user including:
