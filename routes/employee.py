@@ -28,7 +28,6 @@ async def verify_employee(token: str = Depends(JWTBearer())):
         )
     return payload
 
-
 class MeetResponse(BaseModel):
     meet_id: str
     with_user_id: str
@@ -134,7 +133,7 @@ async def get_user_profile(
     Get detailed information about the current user including:
     - Basic profile information
     - Mood score statistics
-    - Chat history summary
+    - Chat history summary (most recently updated chat)
     - Upcoming meetings and sessions
     - Company data
     """
@@ -172,15 +171,12 @@ async def get_user_profile(
             if chats and len(chats) > 0:
                 # Calculate mood statistics
                 mood_scores = []
-                # emotion_distribution = defaultdict(int)
                 total_sessions = 0
                 
                 for chat in chats:
                     if hasattr(chat, 'mood_score') and chat.mood_score and chat.mood_score > 0:
                         mood_scores.append(chat.mood_score)
                         total_sessions += 1
-                        
-                        
 
                 # Calculate mood stats if there are valid scores
                 if mood_scores:
@@ -190,60 +186,35 @@ async def get_user_profile(
                     response.mood_stats = MoodScoreStats(
                         average_score=average_score,
                         total_sessions=total_sessions,
-                        # emotion_distribution=dict(emotion_distribution),
                         last_5_scores=last_5_scores
                     )
 
-                # Calculate chat summary
-                total_messages = 0
-                for chat in chats:
-                    if hasattr(chat, 'messages') and chat.messages:
-                        total_messages += len(chat.messages)
+                # Find the most recently updated chat
+                latest_chat = max(chats, key=lambda x: x.updated_at.replace(tzinfo=datetime.UTC) if hasattr(x, 'updated_at') else datetime.datetime.min.replace(tzinfo=datetime.UTC))
                 
-                # Find latest chat
-                last_chat = None
-                if chats:
-                    try:
-                        last_chat = max(chats, key=lambda x: x.updated_at if hasattr(x, 'updated_at') else datetime.datetime.min)
-                    except Exception as e:
-                        print(f"Error finding last chat: {str(e)}")
-                
-                if last_chat:
+                if latest_chat:
                     last_message = None
                     last_message_time = None
                     
-                    try:
-                        if hasattr(last_chat, 'messages') and last_chat.messages and len(last_chat.messages) > 0:
-                            last_message_obj = last_chat.messages[-1]
-                            if hasattr(last_message_obj, 'text'):
-                                last_message = last_message_obj.text
-                            else:
-                                last_message = str(last_message_obj)
-                                
-                            if hasattr(last_message_obj, 'timestamp'):
-                                last_message_time = last_message_obj.timestamp
-                            else:
-                                last_message_time = last_chat.updated_at
-                        else:
-                            last_message_time = last_chat.updated_at if hasattr(last_chat, 'updated_at') else datetime.datetime.now()
-                    except Exception as e:
-                        print(f"Error extracting message data: {str(e)}")
+                    if hasattr(latest_chat, 'messages') and latest_chat.messages and len(latest_chat.messages) > 0:
+                        last_message_obj = latest_chat.messages[-1]
+                        if hasattr(last_message_obj, 'text'):
+                            last_message = last_message_obj.text
+                        if hasattr(last_message_obj, 'timestamp'):
+                            last_message_time = last_message_obj.timestamp.replace(tzinfo=datetime.UTC)
                     
-                    try:
-                        response.chat_summary = ChatSummary(
-                            chat_id=last_chat.chat_id,
-                            last_message=last_message,
-                            last_message_time=last_message_time,
-                            unread_count=last_chat.unread_count if hasattr(last_chat, 'unread_count') else 0,
-                            total_messages=total_messages,
-                            chat_mode=last_chat.chat_mode.value if hasattr(last_chat, 'chat_mode') else "BOT",
-                            is_escalated=last_chat.is_escalated if hasattr(last_chat, 'is_escalated') else False
-                        )
-                    except Exception as e:
-                        print(f"Error creating chat summary: {str(e)}")
+                    response.chat_summary = ChatSummary(
+                        chat_id=latest_chat.chat_id,
+                        last_message=last_message,
+                        last_message_time=last_message_time or latest_chat.updated_at.replace(tzinfo=datetime.UTC),
+                        unread_count=latest_chat.unread_count if hasattr(latest_chat, 'unread_count') else 0,
+                        total_messages=len(latest_chat.messages),
+                        chat_mode=latest_chat.chat_mode.value if hasattr(latest_chat, 'chat_mode') else "BOT",
+                        is_escalated=latest_chat.is_escalated if hasattr(latest_chat, 'is_escalated') else False,
+                        created_at=latest_chat.created_at.replace(tzinfo=datetime.UTC)
+                    )
                         
         except Exception as e:
-            # If there's an error getting chat data, continue with default values
             print(f"Error processing chat data: {str(e)}")
 
         try:
@@ -272,13 +243,10 @@ async def get_user_profile(
         # Add company data if available
         if employee_data.company_data:
             try:
-                response.company_data = employee_data.company_data.dict()
+                response.company_data = employee_data.company_data
             except Exception as e:
                 print(f"Error processing company data: {str(e)}")
-                if hasattr(employee_data.company_data, "__dict__"):
-                    response.company_data = employee_data.company_data.__dict__
-                else:
-                    response.company_data = None
+                response.company_data = None
 
         return response
 
@@ -591,4 +559,42 @@ async def mark_notification_read(
         raise HTTPException(
             status_code=500,
             detail=f"Error marking notification as read: {str(e)}"
+        )
+
+@router.patch("/notification/mark_all_as_read", response_model=List[NotificationResponse])
+async def mark_all_notifications_read(
+    employee: dict = Depends(verify_employee)
+):
+    """
+    Mark all notifications as read for the current employee.
+    Returns the list of updated notifications.
+    """
+    try:
+        # Get all unread notifications for the employee
+        notifications = await Notification.find({
+            "employee_id": employee["employee_id"],
+            "status": NotificationStatus.UNREAD
+        }).to_list()
+        
+        # Mark all notifications as read
+        for notification in notifications:
+            notification.status = NotificationStatus.READ
+            await notification.save()
+        
+        # Return the updated notifications
+        return [
+            NotificationResponse(
+                id=str(notification.id),
+                employee_id=notification.employee_id,
+                title=notification.title,
+                description=notification.description,
+                created_at=notification.created_at,
+                status=notification.status
+            )
+            for notification in notifications
+        ]
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error marking notifications as read: {str(e)}"
         )
