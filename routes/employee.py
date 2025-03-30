@@ -28,7 +28,15 @@ async def verify_employee(token: str = Depends(JWTBearer())):
         )
     return payload
 
-
+async def verify_user(token: str = Depends(JWTBearer())):
+    """Verify that the user is an authenticated user."""
+    payload = decode_jwt(token)
+    if not payload:
+        raise HTTPException(
+            status_code=403,
+            detail="Only authenticatedusers can access this endpoint"
+        )
+    return payload
 class MeetResponse(BaseModel):
     meet_id: str
     with_user_id: str
@@ -120,7 +128,7 @@ class NotificationResponse(BaseModel):
 
 @router.get("/profile", response_model=UserDetails, tags=["Employee"])
 async def get_user_profile(
-    employee: dict = Depends(verify_employee)
+    employee: dict = Depends(verify_user)
 ):
     """
     Get detailed information about the current user including:
@@ -583,4 +591,42 @@ async def mark_notification_read(
         raise HTTPException(
             status_code=500,
             detail=f"Error marking notification as read: {str(e)}"
+        )
+
+@router.patch("/notification/mark_all_as_read", response_model=List[NotificationResponse])
+async def mark_all_notifications_read(
+    employee: dict = Depends(verify_employee)
+):
+    """
+    Mark all notifications as read for the current employee.
+    Returns the list of updated notifications.
+    """
+    try:
+        # Get all unread notifications for the employee
+        notifications = await Notification.find({
+            "employee_id": employee["employee_id"],
+            "status": NotificationStatus.UNREAD
+        }).to_list()
+        
+        # Mark all notifications as read
+        for notification in notifications:
+            notification.status = NotificationStatus.READ
+            await notification.save()
+        
+        # Return the updated notifications
+        return [
+            NotificationResponse(
+                id=str(notification.id),
+                employee_id=notification.employee_id,
+                title=notification.title,
+                description=notification.description,
+                created_at=notification.created_at,
+                status=notification.status
+            )
+            for notification in notifications
+        ]
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error marking notifications as read: {str(e)}"
         )
