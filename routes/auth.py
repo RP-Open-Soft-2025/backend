@@ -24,7 +24,7 @@ async def user_login(user_credentials: EmployeeSignIn = Body(...)):
     user_exists = await Employee.find_one(Employee.employee_id == user_credentials.employee_id)
     if user_exists:
         if user_exists.role == Role.ADMIN:
-            raise HTTPException(status_code=403, detail="Please use admin login endpoint")
+            raise HTTPException(status_code=403, detail="You are an admin, please use admin panel")
             
         password = hash_helper.verify(user_credentials.password, user_exists.password)
         if password:
