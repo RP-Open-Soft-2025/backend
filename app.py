@@ -12,42 +12,35 @@ from routes.session import router as SessionRouter
 from routes.llm_chat import router as LLMChatRouter
 from routes.chat import router as ChatRouter
 from utils.scheduler import setup_scheduler
-from fastapi.middleware.cors import CORSMiddleware
 from middleware import AuthMiddleware
-
-app = FastAPI()
 
 # Initialize scheduler
 scheduler = None
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-app.add_middleware(AuthMiddleware)
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifespan event to initialize resources like the database and scheduler."""
+    # Initialize database first
     await initiate_database()
+    
+    # Then initialize scheduler
     global scheduler
     scheduler = setup_scheduler()
+    
     yield
+    
+    # Cleanup
     if scheduler:
         scheduler.shutdown()
 
-
+# Create FastAPI app with lifespan
 app = FastAPI(
     title="Fantastic App",
     description="An API for managing students and administrators.",
-    lifespan=lifespan  # Register lifespan handler
+    lifespan=lifespan
 )
 
-# Configure CORS
+# Configure middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # Allows all origins
@@ -56,21 +49,21 @@ app.add_middleware(
     allow_headers=["*"],  # Allows all headers
 )
 
-token_listener = JWTBearer()
+app.add_middleware(AuthMiddleware)
 
-
+# Root endpoint
 @app.get("/", tags=["Root"])
 async def read_root() -> dict:
     """Root endpoint."""
     return {"message": "Welcome to this fantastic app."}
 
 
-# Including routers
-app.include_router(authRouter,prefix="/auth", tags=["auth"])
 
+# Including routers
+app.include_router(authRouter, prefix="/auth", tags=["auth"])
 app.include_router(AdminRouter, tags=["Admin"], prefix="/admin")
 app.include_router(AdminHRRouter, tags=["Admin-HR"], prefix="/admin-hr")
 app.include_router(EmployeeRouter, tags=["Employee"], prefix="/employee")
 app.include_router(HRRouter, tags=["HR"], prefix="/hr")
-app.include_router(ChatRouter, tags=["chat"],prefix="/chat")
+app.include_router(ChatRouter, tags=["chat"], prefix="/chat")
 app.include_router(LLMChatRouter, tags=["LLM-Chat"], prefix="/llm/chat")
