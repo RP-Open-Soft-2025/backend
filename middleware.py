@@ -1,9 +1,10 @@
-from fastapi import Request, Response
-from jose import JWTError, jwt, ExpiredSignatureError
+from fastapi import Request, Response, HTTPException
+from jose import JWTError, jwt, ExpiredSignatureError, InvalidTokenError
 from starlette.middleware.base import BaseHTTPMiddleware
 from auth.jwt_handler import sign_jwt
 from models import Employee  
 from config.config import Settings
+from typing import Optional
 
 secret_key = Settings().secret_key
 
@@ -18,25 +19,49 @@ class AuthMiddleware(BaseHTTPMiddleware):
         access_token = auth_header.split(" ")[1]
 
         try:
+            # Validate access token
             jwt.decode(access_token, secret_key, algorithms=["HS256"])
         except ExpiredSignatureError:
-            refresh_token = request.cookies.get("refresh_token")
-            if refresh_token:
-                try:
-                    payload = jwt.decode(refresh_token, secret_key, algorithms=["HS256"])
-                    employee_id = payload.get("sub") 
+            # Handle expired access token
+            new_access_token = await self._handle_refresh_token(request)
+            if new_access_token:
+                response.headers["Authorization"] = f"Bearer {new_access_token}"
+            else:
+                # If refresh token is invalid or expired, clear cookies and continue
+                response.delete_cookie("refresh_token")
+        except (JWTError, InvalidTokenError) as e:
+            # Handle other JWT errors
+            response.delete_cookie("refresh_token")
+            response.status_code = 401
+            return response
 
-                    user_exists = await Employee.find_one(Employee.employee_id == employee_id)
-                    if not user_exists:
-                        return response  
+        return response
 
-                
-                    new_access_token = sign_jwt(user_exists.employee_id, user_exists.role, user_exists.email)
+    async def _handle_refresh_token(self, request: Request) -> Optional[str]:
+        """
+        Handle refresh token validation and new access token generation.
+        Returns new access token if successful, None otherwise.
+        """
+        refresh_token = request.cookies.get("refresh_token")
+        if not refresh_token:
+            return None
 
-        
-                    response.headers["Authorization"] = f"Bearer {new_access_token}"
+        try:
+            # Validate refresh token
+            payload = jwt.decode(refresh_token, secret_key, algorithms=["HS256"])
+            employee_id = payload.get("sub")
+            
+            if not employee_id:
+                return None
 
-                except ExpiredSignatureError:
-                    response.delete_cookie("refresh_token")
+            # Check if user exists
+            user_exists = await Employee.find_one(Employee.employee_id == employee_id)
+            if not user_exists:
+                return None
 
-        return response  
+            # Generate new access token
+            return sign_jwt(user_exists.employee_id, user_exists.role, user_exists.email)
+
+        except (ExpiredSignatureError, JWTError, InvalidTokenError):
+            # Handle all JWT-related errors for refresh token
+            return None
