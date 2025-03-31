@@ -11,12 +11,14 @@ from routes.hr import router as HRRouter
 from routes.session import router as SessionRouter
 from routes.llm_chat import router as LLMChatRouter
 from routes.chat import router as ChatRouter
-
+from utils.scheduler import setup_scheduler
 from fastapi.middleware.cors import CORSMiddleware
 from middleware import AuthMiddleware
 
 app = FastAPI()
 
+# Initialize scheduler
+scheduler = None
 
 app.add_middleware(
     CORSMiddleware,
@@ -27,11 +29,16 @@ app.add_middleware(
 )
 
 app.add_middleware(AuthMiddleware)
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Lifespan event to initialize resources like the database."""
+    """Lifespan event to initialize resources like the database and scheduler."""
     await initiate_database()
-    yield  # No cleanup needed, but you can add if necessary
+    global scheduler
+    scheduler = setup_scheduler()
+    yield
+    if scheduler:
+        scheduler.shutdown()
 
 
 app = FastAPI(
