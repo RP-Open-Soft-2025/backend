@@ -216,24 +216,24 @@ def setup_scheduler():
     """Set up the scheduler to run employee selection."""
     scheduler = AsyncIOScheduler()
     
-    # For testing: Run every 15 seconds
-    scheduler.add_job(
-        run_employee_selection,
-        # trigger=IntervalTrigger(minutes=2),
-        trigger=IntervalTrigger(seconds=15),
-        id='employee_selection',
-        name='Minute Employee Selection',
-        replace_existing=True
-    )
-    
-    # For production: Run at 9:00 AM every day
+    # # For testing: Run every 15 seconds
     # scheduler.add_job(
     #     run_employee_selection,
-    #     trigger=CronTrigger(hour=9, minute=0),
+    #     # trigger=IntervalTrigger(minutes=2),
+    #     trigger=IntervalTrigger(seconds=15),
     #     id='employee_selection',
-    #     name='Daily Employee Selection',
+    #     name='Minute Employee Selection',
     #     replace_existing=True
     # )
+    
+    # For production: Run at 9:00 AM every day
+    scheduler.add_job(
+        run_employee_selection,
+        trigger=CronTrigger(hour=9, minute=0),
+        id='employee_selection',
+        name='Daily Employee Selection',
+        replace_existing=True
+    )
     
     scheduler.start()
     logger.info("Scheduler started successfully")
