@@ -72,3 +72,46 @@ def send_new_session_email(to_email: str, sub: str):
     except Exception as e:
         logging.error(f"Error sending email: {e}")
         raise HTTPException(status_code=500, detail="Failed to send email")
+    
+def send_new_employee_email(to_email: str, user:str , password:str):
+    sender_email = Settings().sender_email
+    sender_password = Settings().sender_password
+    subject = "Your Account Credentials"
+    body = f"""Dear Employee,
+
+Welcome to Delloite! We are excited to have you on board and look forward to working with you.
+
+Below are your login credentials for accessing your company account:
+
+Username: {user}
+
+Temporary Password: {password}
+
+For security reasons, please log in and change your password as soon as possible.
+
+We wish you a great start and success in your new role!
+
+Best regards,
+Deloitte"""
+
+    msg = MIMEMultipart()
+    msg["From"] = sender_email
+    msg["To"] = to_email
+    msg["Subject"] = subject
+    msg.attach(MIMEText(body, "plain"))
+
+    try:
+        logging.info("Connecting to SMTP server...")
+        server = smtplib.SMTP("smtp.gmail.com", 587)
+        server.starttls()
+        server.login(sender_email, sender_password)
+        logging.info("Successfully authenticated")
+        
+        logging.info(f"Sending email to {to_email}")
+        server.sendmail(sender_email, to_email, msg.as_string())
+        server.quit()
+        logging.info("Email sent successfully")
+        
+    except Exception as e:
+        logging.error(f"Error sending email: {e}")
+        raise HTTPException(status_code=500, detail="Failed to send email")
