@@ -13,6 +13,7 @@ from datetime import datetime, timedelta, UTC
 
 secret_key = Settings().secret_key
 email_template = Settings().email_template
+admin_email_template = Settings().admin_email_template
 router = APIRouter()
 hash_helper = CryptContext(schemes=["bcrypt"])
 reset_tokens = {}
@@ -37,8 +38,8 @@ async def user_login(user_credentials: EmployeeSignIn = Body(...)):
                     "timestamp": datetime.now(UTC),
                     "is_first_login": True
                 }
-                reset_link = f"{email_template}{reset_token}"
-                await send_email(user_exists.email, reset_link)
+                # reset_link = f"{email_template}{reset_token}"
+                # await send_email(user_exists.email, reset_link)
                 
                 return JSONResponse(
                     status_code=307,
@@ -78,8 +79,8 @@ async def admin_login(user_credentials: EmployeeSignIn = Body(...)):
                     "is_first_login": True,
                     "is_admin": True
                 }
-                reset_link = f"{email_template}{reset_token}"
-                await send_email(user_exists.email, reset_link)
+                # reset_link = f"{admin_email_template}{reset_token}"
+                # await send_email(user_exists.email, reset_link)
                 
                 return JSONResponse(
                     status_code=307,
@@ -127,7 +128,7 @@ async def admin_forgot_password(forgot_password_request: ForgotPasswordRequest =
         "timestamp": datetime.now(UTC),
         "is_admin": True
     }
-    reset_link = f"{email_template}{reset_token}"
+    reset_link = f"{admin_email_template}{reset_token}"
     await send_email(user_exists.email, reset_link)
     last_reset_request[email] = current_time
     return ForgotPasswordResponse(message="Admin password reset link sent to your email.")
