@@ -6,7 +6,7 @@ from models.session import Session, SessionStatus
 from models.employee import Employee
 from models.chat import Chat
 from models.notification import Notification, NotificationStatus
-from utils.utils import send_email
+from utils.utils import send_new_session_email
 import json
 from datetime import datetime, timedelta, UTC
 import logging
@@ -148,7 +148,6 @@ async def schedule_session_and_notify(employee_id: str):
         await create_notification(employee_id, notification_title, notification_desc)
 
         # Prepare email content
-        email_subject = "Counseling Session Scheduled"
         email_body = f"""Dear {employee.name},
 
 A counseling session has been scheduled for you based on our employee wellness program.
@@ -164,7 +163,7 @@ Best regards,
 HR Team"""
 
         # Send email notification
-        await send_email(employee.email, email_body)
+        await send_new_session_email(employee.email, email_body)
 
         logger.info(f"Session scheduled and notification sent for employee {employee_id}")
         return session
