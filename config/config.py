@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     sender_email: str = "fill sender_email .env.dev"
     sender_password:str = "fill sender_password .env.dev"
     email_template:str="fill email_template .env.dev"
+    admin_email_template:str="fill admin_email_template .env.dev"
     LLM_ADDR:str="fill LLM_ADDR .env.dev"
     # JWT
     secret_key: str = "secret"
