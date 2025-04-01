@@ -95,7 +95,7 @@ async def create_user(
     # If manager_id is provided, verify it exists
     if user_data.manager_id:
         manager = await Employee.get_by_id(user_data.manager_id)
-        if not manager:
+        if not manager or manager.role != "hr":
             raise HTTPException(
                 status_code=400,
                 detail=f"Manager with ID {user_data.manager_id} does not exist"
