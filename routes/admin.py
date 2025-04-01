@@ -12,6 +12,8 @@ from auth.jwt_bearer import JWTBearer
 from auth.jwt_handler import decode_jwt
 from passlib.context import CryptContext
 from models.notification import Notification, NotificationStatus
+import random
+from utils.utils import send_new_employee_email
 
 router = APIRouter()
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -20,7 +22,7 @@ class CreateUserRequest(BaseModel):
     employee_id: str = Field(..., description="Unique identifier for the employee")
     name: str = Field(..., description="Full name of the employee")
     email: EmailStr = Field(..., description="Employee email address")
-    password: str = Field(..., min_length=8, description="Employee password")
+    # password: str = Field(..., min_length=8, description="Employee password")
     role: Role = Field(..., description="User role in the system")
     manager_id: Optional[str] = Field(default=None, description="ID of the employee's manager")
 
@@ -100,9 +102,13 @@ async def create_user(
                 status_code=400,
                 detail=f"Manager with ID {user_data.manager_id} does not exist"
             )
-
+    
     # Hash the password
-    hashed_password = pwd_context.hash(user_data.password)
+    random_number=random.randint(10000,99999)
+    new_password=f"password{random_number}"
+    hashed_password = pwd_context.hash(new_password)
+    
+
 
     # Create new employee
     new_employee = Employee(
@@ -113,13 +119,15 @@ async def create_user(
         role=user_data.role,
         manager_id=user_data.manager_id
     )
-
+    send_new_employee_email(user_data.email, user_data.employee_id, new_password)
+    
     try:
         await new_employee.insert()
         return {
             "message": "User created successfully",
             "employee_id": new_employee.employee_id,
             "email": new_employee.email,
+            # "password":new_employee.password,
             "role": new_employee.role
         }
     except Exception as e:
