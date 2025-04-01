@@ -67,7 +67,7 @@ async def user_login(user_credentials: EmployeeSignIn = Body(...)):
 @router.post("/admin/login")
 async def admin_login(user_credentials: EmployeeSignIn = Body(...)):
     user_exists = await Employee.find_one(Employee.employee_id == user_credentials.employee_id)
-    if user_exists and user_exists.role == "admin":
+    if user_exists and user_exists.role in ["admin", "hr"]:
         password = hash_helper.verify(user_credentials.password, user_exists.password)
         if password:
             if user_exists.is_first_login:
@@ -110,7 +110,7 @@ async def admin_forgot_password(forgot_password_request: ForgotPasswordRequest =
     # Check if user exists and is admin
     user_exists = await Employee.find_one({
         "email": {"$regex": f"^{email}$", "$options": "i"},
-        "role": "admin"
+        "role": {"$in": ["admin", "hr"]}
     })
     
     if not user_exists:
@@ -144,7 +144,7 @@ async def admin_reset_password(reset_token: str, request_data: ResetPasswordRequ
     
     user = await Employee.find_one({
         "email": email,
-        "role": "admin"
+        "role": {"$in": ["admin", "hr"]}
     })
     if not user:
         raise HTTPException(status_code=404, detail="Admin user not found")
