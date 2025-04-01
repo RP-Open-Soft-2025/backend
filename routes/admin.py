@@ -12,9 +12,11 @@ from auth.jwt_bearer import JWTBearer
 from auth.jwt_handler import decode_jwt
 from passlib.context import CryptContext
 from models.notification import Notification, NotificationStatus
+import logging
 
 router = APIRouter()
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+logger = logging.getLogger(__name__)
 
 class CreateUserRequest(BaseModel):
     employee_id: str = Field(..., description="Unique identifier for the employee")
@@ -521,12 +523,22 @@ async def get_meets(admin: dict = Depends(verify_admin)):
 async def get_user(userid: str, admin: dict = Depends(verify_admin)):
     try:
         user_det = await Employee.find_one({"employee_id": userid})
-        return user_det
+        if not user_det:
+            raise HTTPException(
+                status_code=404,
+                detail=f"User with ID {userid} not found"
+            )
+        
+        # Convert to dict and exclude sensitive information
+        user_dict = user_det.dict(exclude={'password'})
+        return user_dict
+    except HTTPException:
+        raise
     except Exception as e:
-        print(f"Error fetching meets: {str(e)}")
+        logger.error(f"Error fetching user details: {str(e)}")
         raise HTTPException(
             status_code=500,
-            detail=f"Error fetching meets: {str(e)}"
+            detail=f"Error fetching user details: {str(e)}"
         )
 
 @router.post("/notification/create", response_model=NotificationResponse)
