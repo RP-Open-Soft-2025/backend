@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Body, HTTPException, Response, Request
 from passlib.context import CryptContext
 from auth.jwt_handler import sign_jwt, refresh_jwt
+from auth.jwt_bearer import JWTBearer
 from models.employee import Employee, Role
 from models.reset_token import ResetToken
 from schemas.user import EmployeeSignIn, ResetPasswordRequest, ForgotPasswordRequest, ForgotPasswordResponse
@@ -17,7 +18,6 @@ email_template = Settings().email_template
 admin_email_template = Settings().admin_email_template
 router = APIRouter()
 hash_helper = CryptContext(schemes=["bcrypt"])
-last_reset_request = {}
 
 # Regular user routes
 @router.post("/login")
@@ -113,10 +113,9 @@ async def admin_forgot_password(forgot_password_request: ForgotPasswordRequest =
     if not user_exists:
         raise HTTPException(status_code=404, detail="Admin user not found")
     
-    if email in last_reset_request:
-        last_request_time = last_reset_request[email]
-        if current_time - last_request_time < timedelta(minutes=2):
-            raise HTTPException(status_code=429, detail="Too many requests. Please wait 2 minutes before trying again.")
+    # Check for recent reset requests using the database
+    if await ResetToken.has_recent_request(email):
+        raise HTTPException(status_code=429, detail="Too many requests. Please wait 2 minutes before trying again.")
     
     reset_token = await ResetToken.create_token(
         email=user_exists.email,
@@ -124,7 +123,7 @@ async def admin_forgot_password(forgot_password_request: ForgotPasswordRequest =
     )
     reset_link = f"{admin_email_template}{reset_token.token}"
     await send_email(user_exists.email, reset_link)
-    last_reset_request[email] = current_time
+    
     return ForgotPasswordResponse(message="Admin password reset link sent to your email.")
 
 @router.get("/admin/validate-reset-token/{reset_token}")
@@ -146,7 +145,7 @@ async def validate_admin_reset_token(reset_token: str):
 
     return {
         "message": "Admin token is valid",
-        "expires_in": "5 minutes"
+        # "expires_in": "5 minutes"
     }
 
 @router.post("/admin/reset-password/{reset_token}")
@@ -233,10 +232,10 @@ async def refresh_access_token(request: Request):
 async def forgot_password(forgot_password_request: ForgotPasswordRequest = Body(...)):
     email = forgot_password_request.email.lower()
     current_time = datetime.now(UTC)
-    if email in last_reset_request:
-        last_request_time = last_reset_request[email]
-        if current_time - last_request_time < timedelta(minutes=2):
-            raise HTTPException(status_code=429, detail="Too many requests. Please wait 2 minutes before trying again.")
+    
+    # Check for recent reset requests using the database
+    if await ResetToken.has_recent_request(email):
+        raise HTTPException(status_code=429, detail="Too many requests. Please wait 2 minutes before trying again.")
 
     # Perform case-insensitive search
     user_exists = await Employee.find_one({"email": {"$regex": f"^{email}$", "$options": "i"}})
@@ -247,7 +246,7 @@ async def forgot_password(forgot_password_request: ForgotPasswordRequest = Body(
     reset_token = await ResetToken.create_token(email=user_exists.email)
     reset_link = f"{email_template}{reset_token.token}"
     await send_email(user_exists.email, reset_link)
-    last_reset_request[email] = current_time
+    
     return ForgotPasswordResponse(message="Password reset link sent to your email.")
 
 @router.get("/validate-reset-token/{reset_token}")
