@@ -2,15 +2,16 @@ from fastapi import APIRouter, HTTPException, Depends, WebSocket, WebSocketDisco
 from typing import List, Dict, Any, Set
 from models.chat import Chat, ChatMode, SenderType, SentimentType
 from models.session import Session, SessionStatus
+from models.chain import Chain, ChainStatus
 from auth.jwt_bearer import JWTBearer
 from auth.jwt_handler import decode_jwt
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from datetime import datetime
 from config.config import Settings
 import requests
 from routes.admin_hr import verify_admin_or_hr
 from routes.employee import ChatSummary, EmployeeChatsResponse 
-from models import Employee
+from models import Employee, Notification
 
 router = APIRouter()
 llm_add = Settings().LLM_ADDR
@@ -37,6 +38,20 @@ class ChatMessage(BaseModel):
 class ChatHistoryResponse(BaseModel):
     chatId: str
     messages: List[ChatMessage]
+
+class ChainContextUpdateRequest(BaseModel):
+    chain_id: str
+    session_id: str
+    current_context: str
+
+class ChainCompletionRequest(BaseModel):
+    chain_id: str
+    session_id: str
+    reason: str
+
+class EndSessionRequest(BaseModel):
+    chat_id: str = Field(..., description="ID of the current chat")
+    chain_id: str = Field(..., description="ID of the chain")
 
 # Add WebSocket connection manager
 class LLMConnectionManager:
@@ -93,7 +108,6 @@ async def send_message(
 ):
     """
     Send a message to the LLM bot and get a response.
-    Also handles sentiment analysis and potential escalation.
     """
     # Get or create chat
     chat = await Chat.get_chat_by_id(request.chatId)
@@ -108,6 +122,11 @@ async def send_message(
     session = await Session.find_one({"chat_id": chat.chat_id})
     if not session:
         raise HTTPException(status_code=404, detail="Associated session not found")
+    
+    # Get associated chain
+    chain = await Chain.find_one({"session_ids": session.session_id})
+    if not chain:
+        raise HTTPException(status_code=404, detail="Associated chain not found")
     
     # Activate session if not already active
     if session.status != SessionStatus.ACTIVE:
@@ -125,17 +144,22 @@ async def send_message(
         "timestamp": datetime.now().isoformat()
     })
     
-    # TODO: Implement actual LLM integration here
-    # For now, using placeholder response
-    session_id = session.session_id
+    # Send message to LLM backend (without context)
     bot_response = "Thank you for reaching out. I'm here to help. Can you tell me more about what's on your mind?"
     try:
-        data = {"session_id": session_id, "message": request.message}
+        data = {
+            "session_id": session.session_id,
+            "chain_id": chain.chain_id,
+            "message": request.message
+        }
         headers = {'Content-Type': 'application/json'}
         response = requests.post(f"{llm_add}/message", json=data, headers=headers)
-        bot_response = response.json()["message"]
+        response_data = response.json()
+        bot_response = response_data["message"]
+            
     except Exception as e:
-        HTTPException(500, detail=str(e))
+        raise HTTPException(500, detail=str(e))
+        
     await chat.add_message(SenderType.BOT, bot_response)
     
     # Broadcast bot response
@@ -146,14 +170,11 @@ async def send_message(
         "timestamp": datetime.now().isoformat()
     })
     
-    # TODO: Implement sentiment analysis here
-    # This would be called after every message
-    # If sentiment is negative, escalate to HR
-    
     return {
         "message": bot_response,
         "chatId": chat.chat_id,
-        "sessionStatus": session.status
+        "sessionStatus": session.status,
+        "chainStatus": chain.status
     }
 
 @router.patch("/initiate-chat")
@@ -161,7 +182,6 @@ async def initiate_chat(request: ChatStatusRequest, current_user: dict = Depends
     """
     Initiate a chat between bot and employee
     """
-
     chat = await Chat.get_chat_by_id(request.chatId)
     if not chat:
         raise HTTPException(status_code=404, detail="Chat not found")
@@ -169,20 +189,35 @@ async def initiate_chat(request: ChatStatusRequest, current_user: dict = Depends
     # Update created_at to current time
     chat.created_at = datetime.now().isoformat()
     
-    # await chat.update_chat_mode(request.status)
     session = await Session.find_one({"chat_id": chat.chat_id})
     if not session:
         raise HTTPException(status_code=404, detail="Associated session not found")
     
+    # Get associated chain
+    chain = await Chain.find_one({"session_ids": session.session_id})
+    if not chain:
+        raise HTTPException(status_code=404, detail="Associated chain not found")
+    
     session.status = SessionStatus.ACTIVE
     await session.save()
-    session_id = session.session_id
+    
     bot_response = "Good Morning. First Question?"
     try:
-        response = requests.post(f"{llm_add}/start_session", data={"session_id": session_id, "employee_id": chat.user_id})
-        bot_response = response.json()["message"]
+        data = {
+            "session_id": session.session_id,
+            "chain_id": chain.chain_id,
+            "employee_id": chat.user_id,
+            "context": chain.context  # Send context only during initiation
+        }
+        print('try sending llm backend a request')
+        response = requests.post(f"{llm_add}/start_session", json=data)
+        print('response from llm backend recieved', response)
+        response_data = response.json()
+        bot_response = response_data["message"]
+            
     except Exception as e:
-        HTTPException(500, detail=str(e))
+        print('exception occured ram', e)
+        raise HTTPException(500, detail=str(e))
         
     await chat.add_message(SenderType.BOT, bot_response)
     
@@ -199,33 +234,56 @@ async def initiate_chat(request: ChatStatusRequest, current_user: dict = Depends
     return {
         "message": bot_response,
         "chatId": chat.chat_id,
-        "sessionStatus": session.status
+        "sessionStatus": session.status,
+        "chainStatus": chain.status
     }
 
-@router.patch("/escalate")
-async def escalate_chat(request: ChatEscalationRequest, current_user: dict = Depends(verify_employee)):
+@router.post("/update-chain-context")
+async def update_chain_context(request: ChainContextUpdateRequest):
     """
-    Escalate chat to HR based on sentiment (placeholder logic)
+    Update chain context after a session ends.
+    Called by LLM backend.
     """
-    chat = await Chat.get_chat_by_id(request.chatId)
-    if not chat:
-        raise HTTPException(status_code=404, detail="Chat not found")
+    chain = await Chain.get_by_id(request.chain_id)
+    if not chain:
+        raise HTTPException(status_code=404, detail="Chain not found")
     
-    # Placeholder escalation logic (to be replaced with actual sentiment analysis)
-    if request.detectedSentiment in [SentimentType.VERY_NEGATIVE, SentimentType.NEGATIVE]:
-        await chat.escalate_chat(request.reason)
-        
-        # Broadcast escalation
-        await llm_manager.broadcast_to_chat(request.chatId, {
-            "type": "escalation",
-            "reason": request.reason,
-            "sentiment": request.detectedSentiment,
-            "timestamp": datetime.now().isoformat()
-        })
-        
-        return {"message": "Chat flagged for HR review due to detected distress."}
+    # Update chain context
+    await chain.update_context(request.current_context)
     
-    return {"message": "Chat escalation not required at this time."}
+    return {"message": "Chain context updated successfully"}
+
+@router.post("/complete-chain")
+async def complete_chain(request: ChainCompletionRequest):
+    """
+    Mark a chain as completed.
+    Called by LLM backend when it's satisfied with the conversation.
+    """
+    chain = await Chain.get_by_id(request.chain_id)
+    if not chain:
+        raise HTTPException(status_code=404, detail="Chain not found")
+    
+    if chain.status != ChainStatus.ACTIVE:
+        raise HTTPException(status_code=400, detail="Chain is not active")
+
+    await chain.complete_chain()
+    return {"message": "Chain completed successfully"}
+
+@router.post("/escalate-chain")
+async def escalate_chain(request: ChainCompletionRequest):
+    """
+    Mark a chain as escalated to HR.
+    Called by LLM backend when it detects need for HR intervention.
+    """
+    chain = await Chain.get_by_id(request.chain_id)
+    if not chain:
+        raise HTTPException(status_code=404, detail="Chain not found")
+    
+    if chain.status != ChainStatus.ACTIVE:
+        raise HTTPException(status_code=400, detail="Chain is not active")
+
+    await chain.escalate_chain()
+    return {"message": "Chain escalated to HR"}
 
 @router.get("/history/{chat_id}", response_model=List[ChatSummary])
 async def get_chat_history(
@@ -248,30 +306,112 @@ async def get_chat_history(
             detail="HR Cannot perform this actions"
         )
     try:
-        # Get all chats for the employee
-        chats = Chat.find({"user_id": user_id})
-        chats = await chats.to_list()
-        chat_summaries = []
-        for chat in chats:
-            last_message = chat.messages[-1].text if chat.messages else None
-            last_message_time = chat.messages[-1].timestamp if chat.messages else None
-            
-            summary = ChatSummary(
-                chat_id=chat.chat_id,
-                last_message=last_message,
-                last_message_time=last_message_time,
-                unread_count=getattr(chat, 'unread_count', 0),
-                total_messages=len(chat.messages) if chat.messages else 0,
-                chat_mode=getattr(chat, 'chat_mode', 'BOT').value if hasattr(chat, 'chat_mode') else "BOT",
-                is_escalated=getattr(chat, 'is_escalated', False),
-                created_at=chat.created_at
-            )
-            chat_summaries.append(summary)
+        response = requests.get(f"{llm_add}/chat_history/{chat_id}")
+        return response.json()
+    except Exception as e:
+        raise HTTPException(500, detail=str(e))
+
+@router.post("/end-session", tags=["LLM"])
+async def end_session(
+    request: EndSessionRequest,
+    employee: dict = Depends(verify_employee)
+):
+    """
+    End the current session, update chain context, and create a new session.
+    """
+    try:
+        # Get current chat
+        chat = await Chat.get_chat_by_id(request.chat_id)
+        if not chat:
+            raise HTTPException(status_code=404, detail="Chat not found")
         
-        return chat_summaries
-    
+        # Verify employee owns this chat
+        if chat.user_id != employee["employee_id"]:
+            raise HTTPException(status_code=403, detail="Not authorized to access this chat")
+        
+        # Get current session
+        session = await Session.find_one({"chat_id": chat.chat_id})
+        if not session:
+            raise HTTPException(status_code=404, detail="Associated session not found")
+        
+        # Get associated chain
+        chain = await Chain.get_by_id(request.chain_id)
+        if not chain:
+            raise HTTPException(status_code=404, detail="Chain not found")
+        
+        # Verify session belongs to chain
+        if session.session_id not in chain.session_ids:
+            raise HTTPException(status_code=400, detail="Session does not belong to this chain")
+        
+        # Complete current session
+        session.status = SessionStatus.COMPLETED
+        session.completed_at = datetime.now(datetime.UTC)
+        await session.save()
+        
+        # Get all messages from current session
+        current_session_messages = [
+            {
+                "sender": msg.sender.value,
+                "text": msg.text,
+                "timestamp": msg.timestamp.isoformat()
+            }
+            for msg in chat.messages
+        ]
+        
+        # Prepare data for LLM backend
+        data = {
+            "chain_id": chain.chain_id,
+            "session_id": session.session_id,
+            "current_context": chain.context,
+            "current_session_messages": current_session_messages
+        }
+        
+        # Call LLM backend to end session and get updated context
+        response = requests.post(f"{llm_add}/end_session", json=data)
+        response_data = response.json()
+        
+        # Update chain context with response from LLM
+        updated_context = response_data.get("updated_context")
+        if updated_context:
+            await chain.update_context(updated_context)
+        
+        # Create new session for tomorrow
+        tomorrow = datetime.now(datetime.UTC) + datetime.timedelta(days=1)
+        scheduled_time = tomorrow.replace(hour=10, minute=0, second=0, microsecond=0)
+        
+        # Create new chat for next session
+        new_chat = Chat(user_id=employee["employee_id"])
+        await new_chat.save()
+        
+        # Create new session
+        new_session = Session(
+            user_id=employee["employee_id"],
+            chat_id=new_chat.chat_id,
+            scheduled_at=scheduled_time,
+            notes=f"Follow-up session for chain {chain.chain_id}"
+        )
+        await new_session.save()
+        
+        # Add new session to chain
+        await chain.add_session(new_session.session_id)
+        
+        # Create notification for the employee
+        notification = Notification(
+            employee_id=employee["employee_id"],
+            title="Next Support Session Scheduled",
+            description=f"Your next support session has been scheduled for {scheduled_time.strftime('%Y-%m-%d %H:%M')} UTC."
+        )
+        await notification.save()
+        
+        return {
+            "message": "Session ended successfully",
+            "new_session_id": new_session.session_id,
+            "scheduled_time": scheduled_time,
+            "updated_context": updated_context
+        }
+        
     except Exception as e:
         raise HTTPException(
             status_code=500,
-            detail=f"Error fetching employee chats: {str(e)}"
+            detail=f"Error ending session: {str(e)}"
         )

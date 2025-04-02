@@ -7,6 +7,7 @@ from models.meet import Meet, MeetStatus
 from models.session import Session, SessionStatus
 from models.chat import Chat, Message, SenderType
 from models.employee import Employee, CompanyData
+from models.chain import Chain, ChainStatus
 from auth.jwt_bearer import JWTBearer
 from auth.jwt_handler import decode_jwt
 import datetime
@@ -597,4 +598,118 @@ async def mark_all_notifications_read(
         raise HTTPException(
             status_code=500,
             detail=f"Error marking notifications as read: {str(e)}"
+        )
+
+class ChainResponse(BaseModel):
+    chain_id: str
+    employee_id: str
+    session_ids: List[str]
+    status: ChainStatus
+    context: Optional[str] = None
+    created_at: datetime.datetime
+    updated_at: datetime.datetime
+    completed_at: Optional[datetime.datetime] = None
+    escalated_at: Optional[datetime.datetime] = None
+    cancelled_at: Optional[datetime.datetime] = None
+    notes: Optional[str] = None
+
+@router.get("/chains", response_model=List[ChainResponse], tags=["Employee"])
+async def get_employee_chains(employee: dict = Depends(verify_employee)):
+    """
+    Get all chains for the current employee.
+    """
+    try:
+        chains = await Chain.find({"employee_id": employee["employee_id"]}).to_list()
+        return chains
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error retrieving chains: {str(e)}"
+        )
+
+@router.get("/chains/{chain_id}", response_model=ChainResponse, tags=["Employee"])
+async def get_chain_details(chain_id: str, employee: dict = Depends(verify_employee)):
+    """
+    Get details of a specific chain.
+    """
+    try:
+        chain = await Chain.get_by_id(chain_id)
+        if not chain:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Chain with ID {chain_id} not found"
+            )
+        
+        # Verify the chain belongs to the employee
+        if chain.employee_id != employee["employee_id"]:
+            raise HTTPException(
+                status_code=403,
+                detail="Not authorized to access this chain"
+            )
+        
+        return chain
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error retrieving chain details: {str(e)}"
+        )
+
+@router.get("/chains/{chain_id}/messages", response_model=ChatMessagesResponse, tags=["Employee"])
+async def get_chain_messages(
+    chain_id: str,
+    employee: dict = Depends(verify_employee)
+):
+    """
+    Get all messages from all sessions in a chain.
+    """
+    try:
+        chain = await Chain.get_by_id(chain_id)
+        if not chain:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Chain with ID {chain_id} not found"
+            )
+        
+        # Verify the chain belongs to the employee
+        if chain.employee_id != employee["employee_id"]:
+            raise HTTPException(
+                status_code=403,
+                detail="Not authorized to access this chain"
+            )
+        
+        # Get all sessions in the chain
+        sessions = await Session.find({"session_id": {"$in": chain.session_ids}}).to_list()
+        
+        # Get all chats for these sessions
+        chat_ids = [session.chat_id for session in sessions]
+        chats = await Chat.find({"chat_id": {"$in": chat_ids}}).to_list()
+        
+        # Collect all messages
+        all_messages = []
+        for chat in chats:
+            for message in chat.messages:
+                all_messages.append(ChatMessage(
+                    sender=message.sender.value,
+                    text=message.text,
+                    timestamp=message.timestamp
+                ))
+        
+        # Sort messages by timestamp
+        all_messages.sort(key=lambda x: x.timestamp)
+        
+        # Get the most recent message timestamp
+        last_updated = max((msg.timestamp for msg in all_messages), default=datetime.datetime.now())
+        
+        return ChatMessagesResponse(
+            chat_id=chain_id,
+            messages=all_messages,
+            total_messages=len(all_messages),
+            last_updated=last_updated,
+            chat_mode="BOT",
+            is_escalated=chain.status == ChainStatus.ESCALATED
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error retrieving chain messages: {str(e)}"
         )

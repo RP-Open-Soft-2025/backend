@@ -8,6 +8,7 @@ from models.session import Session, SessionStatus
 from models.employee import Employee, Role
 from models.chat import Chat
 from models.meet import Meet
+from models.chain import Chain, ChainStatus
 from auth.jwt_bearer import JWTBearer
 from auth.jwt_handler import decode_jwt
 from passlib.context import CryptContext
@@ -57,6 +58,27 @@ class NotificationResponse(BaseModel):
     description: str
     created_at: datetime.datetime
     status: NotificationStatus
+
+class ChainResponse(BaseModel):
+    chain_id: str
+    employee_id: str
+    session_ids: List[str]
+    status: ChainStatus
+    context: Optional[str] = None
+    created_at: datetime.datetime
+    updated_at: datetime.datetime
+    completed_at: Optional[datetime.datetime] = None
+    escalated_at: Optional[datetime.datetime] = None
+    cancelled_at: Optional[datetime.datetime] = None
+    notes: Optional[str] = None
+
+class CreateChainRequest(BaseModel):
+    employee_id: str = Field(..., description="ID of the employee to create chain for")
+    notes: Optional[str] = Field(default=None, description="Any additional notes about the chain")
+    scheduled_time: Optional[datetime.datetime] = Field(
+        default=None,
+        description="When to schedule the first session. Defaults to tomorrow at 10 AM."
+    )
 
 async def verify_admin(token: str = Depends(JWTBearer())):
     """Verify that the user is an admin."""
@@ -580,3 +602,210 @@ async def create_notification(
         created_at=new_notification.created_at,
         status=new_notification.status
     )
+
+@router.get("/chains", response_model=List[ChainResponse], tags=["Admin"])
+async def get_all_chains(admin: dict = Depends(verify_admin)):
+    """
+    Get all chains in the system.
+    Only administrators can access this endpoint.
+    Returns a list of all chains with their details.
+    """
+    try:
+        chains = await Chain.find().to_list()
+        return chains
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error retrieving chains: {str(e)}"
+        )
+
+@router.get("/chains/{chain_id}", response_model=ChainResponse, tags=["Admin"])
+async def get_chain_details(chain_id: str, admin: dict = Depends(verify_admin)):
+    """
+    Get details of a specific chain.
+    Only administrators can access this endpoint.
+    """
+    try:
+        chain = await Chain.get_by_id(chain_id)
+        if not chain:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Chain with ID {chain_id} not found"
+            )
+        return chain
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error retrieving chain details: {str(e)}"
+        )
+
+@router.get("/chains/employee/{employee_id}", response_model=List[ChainResponse], tags=["Admin"])
+async def get_employee_chains(employee_id: str, admin: dict = Depends(verify_admin)):
+    """
+    Get all chains for a specific employee.
+    Only administrators can access this endpoint.
+    """
+    try:
+        chains = await Chain.find({"employee_id": employee_id}).to_list()
+        return chains
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error retrieving employee chains: {str(e)}"
+        )
+
+@router.post("/chains/{chain_id}/complete", tags=["Admin"])
+async def complete_chain(chain_id: str, admin: dict = Depends(verify_admin)):
+    """
+    Mark a chain as completed.
+    Only administrators can access this endpoint.
+    """
+    try:
+        chain = await Chain.get_by_id(chain_id)
+        if not chain:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Chain with ID {chain_id} not found"
+            )
+        
+        if chain.status != ChainStatus.ACTIVE:
+            raise HTTPException(
+                status_code=400,
+                detail="Chain is not active"
+            )
+        
+        await chain.complete_chain()
+        return {"message": "Chain completed successfully"}
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error completing chain: {str(e)}"
+        )
+
+@router.post("/chains/{chain_id}/escalate", tags=["Admin"])
+async def escalate_chain(chain_id: str, admin: dict = Depends(verify_admin)):
+    """
+    Mark a chain as escalated to HR.
+    Only administrators can access this endpoint.
+    """
+    try:
+        chain = await Chain.get_by_id(chain_id)
+        if not chain:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Chain with ID {chain_id} not found"
+            )
+        
+        if chain.status != ChainStatus.ACTIVE:
+            raise HTTPException(
+                status_code=400,
+                detail="Chain is not active"
+            )
+        
+        await chain.escalate_chain()
+        return {"message": "Chain escalated to HR"}
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error escalating chain: {str(e)}"
+        )
+
+@router.post("/chains/{chain_id}/cancel", tags=["Admin"])
+async def cancel_chain(chain_id: str, admin: dict = Depends(verify_admin)):
+    """
+    Cancel a chain.
+    Only administrators can access this endpoint.
+    """
+    try:
+        chain = await Chain.get_by_id(chain_id)
+        if not chain:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Chain with ID {chain_id} not found"
+            )
+        
+        if chain.status not in [ChainStatus.ACTIVE, ChainStatus.ESCALATED]:
+            raise HTTPException(
+                status_code=400,
+                detail="Chain cannot be cancelled in its current state"
+            )
+        
+        await chain.cancel_chain()
+        return {"message": "Chain cancelled successfully"}
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error cancelling chain: {str(e)}"
+        )
+
+@router.post("/chains/create", response_model=ChainResponse, tags=["Admin"])
+async def create_chain(
+    request: CreateChainRequest,
+    admin: dict = Depends(verify_admin)
+):
+    """
+    Create a new chain for an employee and schedule their first session.
+    Only administrators can access this endpoint.
+    """
+    try:
+        # Verify the employee exists
+        employee = await Employee.get_by_id(request.employee_id)
+        if not employee:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Employee with ID {request.employee_id} not found"
+            )
+        
+        # Check if employee already has an active chain
+        active_chain = await Chain.find_one({
+            "employee_id": request.employee_id,
+            "status": ChainStatus.ACTIVE
+        })
+        if active_chain:
+            raise HTTPException(
+                status_code=400,
+                detail="Employee already has an active chain"
+            )
+        
+        # Set default scheduled time to tomorrow at 10 AM if not provided
+        if not request.scheduled_time:
+            tomorrow = datetime.datetime.now(datetime.UTC) + datetime.timedelta(days=1)
+            request.scheduled_time = tomorrow.replace(hour=10, minute=0, second=0, microsecond=0)
+        
+        # Create a new chat for the session
+        chat = Chat(user_id=request.employee_id)
+        await chat.save()
+        
+        # Create a new session
+        session = Session(
+            user_id=request.employee_id,
+            chat_id=chat.chat_id,
+            scheduled_at=request.scheduled_time,
+            notes=request.notes
+        )
+        await session.save()
+        
+        # Create a new chain
+        chain = Chain(
+            employee_id=request.employee_id,
+            session_ids=[session.session_id],
+            status=ChainStatus.ACTIVE,
+            notes=request.notes
+        )
+        await chain.save()
+        
+        # Create notification for the employee
+        notification = Notification(
+            employee_id=request.employee_id,
+            title="New Support Session Scheduled",
+            description=f"A new support session has been scheduled for you on {request.scheduled_time.strftime('%Y-%m-%d %H:%M')} UTC."
+        )
+        await notification.save()
+        
+        return chain
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error creating chain: {str(e)}"
+        )

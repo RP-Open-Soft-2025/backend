@@ -6,6 +6,7 @@ from models.session import Session, SessionStatus
 from models.employee import Employee
 from models.chat import Chat
 from models.notification import Notification, NotificationStatus
+from models.chain import Chain, ChainStatus
 from utils.utils import send_new_session_email
 import json
 from datetime import datetime, timedelta, UTC
@@ -120,6 +121,14 @@ async def schedule_session_and_notify(employee_id: str):
             logger.error(f"Employee not found: {employee_id}")
             return
 
+        # Create a new chain for the series of sessions
+        chain = Chain(
+            employee_id=employee_id,
+            status=ChainStatus.ACTIVE,
+            notes="Automatically created counseling chain"
+        )
+        await chain.save()
+
         # Create a new chat for the session
         chat = Chat(
             chat_id=f"CHAT{uuid.uuid4().hex[:6].upper()}",
@@ -142,6 +151,9 @@ async def schedule_session_and_notify(employee_id: str):
         )
         await session.save()
 
+        # Add session to chain
+        await chain.add_session(session.session_id)
+
         # Create notification
         notification_title = "Counseling Session Scheduled"
         notification_desc = f"A counseling session has been scheduled for you on {scheduled_time.strftime('%Y-%m-%d %H:%M')} UTC."
@@ -156,6 +168,7 @@ Session Details:
 - Date: {scheduled_time.strftime('%Y-%m-%d')}
 - Time: {scheduled_time.strftime('%H:%M')} UTC
 - Session ID: {session.session_id}
+- Chain ID: {chain.chain_id}
 
 Please make sure to attend the session at the scheduled time. If you need to reschedule, please contact your HR representative.
 
@@ -165,7 +178,7 @@ HR Team"""
         # Send email notification
         await send_new_session_email(employee.email, email_body)
 
-        logger.info(f"Session scheduled and notification sent for employee {employee_id}")
+        logger.info(f"Chain and session scheduled for employee {employee_id}")
         return session
 
     except Exception as e:
