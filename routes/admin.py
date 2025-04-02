@@ -358,7 +358,40 @@ async def get_active_and_pending_sessions(admin: dict = Depends(verify_admin)):
             status_code=500,
             detail=f"Error fetching sessions: {str(e)}"
         )
+    
  
+@router.get("/missing/{role}", tags=["Admin"])
+async def get_missing_users(role: Role, admin: dict = Depends(verify_admin)):
+    """
+        Returns missing employees based on role.
+        Only administrators can access this endpoint.
+
+        Role filtering:
+        - 'employee' → IDs in range EMP0001 - EMP0999
+        - 'hr'       → IDs in range EMP1001 - EMP1999
+    """
+    try:
+        # Define ID ranges
+        if role == Role.EMPLOYEE:
+            all_possible_ids = {f"EMP{i:04d}" for i in range(1, 1000)}
+        elif role == Role.HR:
+            all_possible_ids = {f"EMP{i:04d}" for i in range(1001, 2000)}
+        else:
+            raise HTTPException(status_code=400, detail="Invalid role")
+
+        # Get existing employee IDs from database
+        existing_employees = await Employee.find_all()
+        existing_ids = {emp.employee_id for emp in existing_employees}
+
+        # Find missing IDs
+        missing_ids = list(all_possible_ids - existing_ids)
+
+        return {"missing_employee_ids": missing_ids}
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error fetching missing employees: {str(e)}"
+        )
 
 @router.get("/list-users", tags=["Admin"])
 async def list_users(admin: dict = Depends(verify_admin)):
