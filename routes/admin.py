@@ -118,7 +118,8 @@ async def create_user(
         email=user_data.email,
         password=hashed_password,
         role=user_data.role,
-        manager_id=user_data.manager_id
+        manager_id=user_data.manager_id,
+        last_ping=datetime.datetime.now()
     )
     send_new_employee_email(user_data.email, user_data.employee_id, new_password)
     
@@ -389,17 +390,19 @@ async def list_users(admin: dict = Depends(verify_admin)):
                         "latestVibe": latest_vibe,
                         "moodScores": [
                             {
-                                "timestamp": vibe.Response_Date.isoformat(),
+                                "timestamp": vibe.Response_Date.isoformat() if vibe.Response_Date else None,
                                 "Vibe_Score": vibe.Vibe_Score,
                                 # "Emotion_Zone": vibe.Emotion_Zone
                             }
                             for vibe in (employee.company_data.vibemeter if hasattr(employee, 'company_data') and employee.company_data and hasattr(employee.company_data, 'vibemeter') else [])
                         ]
                     },
-                    "lastPing": employee.last_ping.isoformat()
+                    "lastPing": employee.last_ping.isoformat() 
+
                 }
                 users.append(user_data)
             except Exception as e:
+
                 print(f"Error processing employee {getattr(employee, 'employee_id', 'unknown')}: {str(e)}")
                 continue
         
