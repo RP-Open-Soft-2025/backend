@@ -59,13 +59,13 @@ class NotificationResponse(BaseModel):
     status: NotificationStatus
 
 async def verify_admin(token: str = Depends(JWTBearer())):
-    """Verify that the user is an admin."""
+    """Verify that the user is an admin or HR."""
     payload = decode_jwt(token)
     # print(payload)
-    if not payload or payload.get("role") != "admin":
+    if not payload or payload.get("role") not in ["admin", "hr"]:
         raise HTTPException(
             status_code=403,
-            detail="Only administrators can access this endpoint"
+            detail="Only administrators and HR can access this endpoint"
         )
     return payload
 
