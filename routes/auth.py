@@ -24,7 +24,7 @@ hash_helper = CryptContext(schemes=["bcrypt"])
 async def user_login(user_credentials: EmployeeSignIn = Body(...)):
     user_exists = await Employee.find_one(Employee.employee_id == user_credentials.employee_id)
     if user_exists:
-        if user_exists.role == Role.ADMIN:
+        if user_exists.role == "admin" or user_exists.role == "hr":
             raise HTTPException(status_code=403, detail="Please use admin login endpoint")
             
         password = hash_helper.verify(user_credentials.password, user_exists.password)
@@ -42,7 +42,7 @@ async def user_login(user_credentials: EmployeeSignIn = Body(...)):
                 return JSONResponse(
                     status_code=307,
                     content={
-                        "message": "A password reset link has been sent to your email. Please check your email and reset your password.",
+                        # "message": "A password reset link has been sent to your email. Please check your email and reset your password.",
                         "redirect_url": f"/reset-password/{reset_token.token}",
                         "expires_in": "5 minutes"
                     }
@@ -66,7 +66,7 @@ async def user_login(user_credentials: EmployeeSignIn = Body(...)):
 @router.post("/admin/login")
 async def admin_login(user_credentials: EmployeeSignIn = Body(...)):
     user_exists = await Employee.find_one(Employee.employee_id == user_credentials.employee_id)
-    if user_exists and user_exists.role == "admin":
+    if user_exists and (user_exists.role == "admin" or user_exists.role == "hr"):
         password = hash_helper.verify(user_credentials.password, user_exists.password)
         if password:
             if user_exists.is_first_login:
@@ -81,7 +81,7 @@ async def admin_login(user_credentials: EmployeeSignIn = Body(...)):
                 return JSONResponse(
                     status_code=307,
                     content={
-                        "message": "A password reset link has been sent to your email. Please check your email and reset your password.",
+                        # "message": "A password reset link has been sent to your email. Please check your email and reset your password.",
                         "redirect_url": f"/admin/reset-password/{reset_token.token}",
                         "expires_in": "5 minutes"
                     }
@@ -97,21 +97,21 @@ async def admin_login(user_credentials: EmployeeSignIn = Body(...)):
                 "is_first_login": user_exists.is_first_login
             })
 
-    raise HTTPException(status_code=403, detail="Invalid admin credentials")
+    raise HTTPException(status_code=403, detail="Invalid admin/HR credentials")
 
 @router.post("/admin/forgot-password")
 async def admin_forgot_password(forgot_password_request: ForgotPasswordRequest = Body(...)):
     email = forgot_password_request.email.lower()
     current_time = datetime.now(UTC)
     
-    # Check if user exists and is admin
+    # Check if user exists and is admin or HR
     user_exists = await Employee.find_one({
         "email": {"$regex": f"^{email}$", "$options": "i"},
-        "role": "admin"
+        "role": {"$in": ["admin", "hr"]}
     })
     
     if not user_exists:
-        raise HTTPException(status_code=404, detail="Admin user not found")
+        raise HTTPException(status_code=404, detail="Admin/HR user not found")
     
     # Check for recent reset requests using the database
     if await ResetToken.has_recent_request(email):
@@ -124,14 +124,14 @@ async def admin_forgot_password(forgot_password_request: ForgotPasswordRequest =
     reset_link = f"{admin_email_template}{reset_token.token}"
     await send_email(user_exists.email, reset_link)
     
-    return ForgotPasswordResponse(message="Admin password reset link sent to your email.")
+    return ForgotPasswordResponse(message="Admin/HR password reset link sent to your email.")
 
 @router.get("/admin/validate-reset-token/{reset_token}")
 async def validate_admin_reset_token(reset_token: str):
     token_data = await ResetToken.get_admin_token(reset_token)
     
     if not token_data:
-        raise HTTPException(status_code=404, detail="Invalid or expired admin reset token")
+        raise HTTPException(status_code=404, detail="Invalid or expired admin/HR reset token")
     
     timestamp = token_data.timestamp
     # Make sure timestamp is timezone-aware
@@ -141,10 +141,10 @@ async def validate_admin_reset_token(reset_token: str):
     current_time = datetime.now(UTC)
     if current_time - timestamp > timedelta(minutes=5):
         await ResetToken.delete_token(reset_token)
-        raise HTTPException(status_code=410, detail="Admin reset link has expired")
+        raise HTTPException(status_code=410, detail="Admin/HR reset link has expired")
 
     return {
-        "message": "Admin token is valid",
+        "message": "Admin/HR token is valid",
         # "expires_in": "5 minutes"
     }
 
@@ -164,10 +164,10 @@ async def admin_reset_password(reset_token: str, request_data: ResetPasswordRequ
     
     user = await Employee.find_one({
         "email": email,
-        "role": "admin"
+        "role": {"$in": ["admin", "hr"]}
     })
     if not user:
-        raise HTTPException(status_code=404, detail="Admin user not found")
+        raise HTTPException(status_code=404, detail="Admin/HR user not found")
     
     if hash_helper.verify(request_data.new_password, user.password):
         raise HTTPException(status_code=400, detail="New password cannot be the same as the old password.")
@@ -188,7 +188,7 @@ async def admin_reset_password(reset_token: str, request_data: ResetPasswordRequ
     
     return {
         "success": True,
-        "message": "Admin password reset successful",
+        "message": "Admin/HR password reset successful",
         "is_first_login": user.is_first_login
     }
 
