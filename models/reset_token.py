@@ -58,4 +58,14 @@ class ResetToken(Document):
         """Delete all expired tokens from the database."""
         cutoff_time = datetime.now(UTC) - timedelta(minutes=max_age_minutes)
         result = await cls.find({"timestamp": {"$lt": cutoff_time}}).delete()
-        return result 
+        return result
+    
+    @classmethod
+    async def has_recent_request(cls, email: str, cooldown_minutes: int = 2):
+        """Check if there was a recent reset request for this email."""
+        cutoff_time = datetime.now(UTC) - timedelta(minutes=cooldown_minutes)
+        recent_token = await cls.find_one({
+            "email": email,
+            "timestamp": {"$gt": cutoff_time}
+        })
+        return recent_token is not None 
