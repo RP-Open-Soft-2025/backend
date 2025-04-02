@@ -42,7 +42,7 @@ async def user_login(user_credentials: EmployeeSignIn = Body(...)):
                 return JSONResponse(
                     status_code=307,
                     content={
-                        "message": "A password reset link has been sent to your email. Please check your email and reset your password.",
+                        # "message": "A password reset link has been sent to your email. Please check your email and reset your password.",
                         "redirect_url": f"/reset-password/{reset_token.token}",
                         "expires_in": "5 minutes"
                     }
@@ -81,7 +81,7 @@ async def admin_login(user_credentials: EmployeeSignIn = Body(...)):
                 return JSONResponse(
                     status_code=307,
                     content={
-                        "message": "A password reset link has been sent to your email. Please check your email and reset your password.",
+                        # "message": "A password reset link has been sent to your email. Please check your email and reset your password.",
                         "redirect_url": f"/admin/reset-password/{reset_token.token}",
                         "expires_in": "5 minutes"
                     }
