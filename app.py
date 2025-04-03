@@ -11,6 +11,7 @@ from routes.hr import router as HRRouter
 from routes.session import router as SessionRouter
 from routes.llm_chat import router as LLMChatRouter
 from routes.chat import router as ChatRouter
+from routes.meet import router as MeetRouter
 # from routes.chain import router as ChainRouter
 from utils.scheduler import setup_scheduler
 from middleware import AuthMiddleware
@@ -88,3 +89,4 @@ app.include_router(HRRouter, tags=["HR"], prefix="/hr")
 app.include_router(ChatRouter, tags=["chat"], prefix="/chat")
 app.include_router(LLMChatRouter, tags=["LLM-Chat"], prefix="/llm/chat")
 # app.include_router(ChainRouter, tags=["Chain"], prefix="/chain")
+app.include_router(MeetRouter, tags=["Meetings"], prefix="/meet")

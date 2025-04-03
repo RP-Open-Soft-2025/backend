@@ -255,7 +255,7 @@ async def create_session(
     return {
         "message": "Chat has created successfully",
         "chat_id": chat.chat_id,
-        "session_id": session.session_id
+        "session_id": session.session_id,
     }
 
 @router.get("/sessions/pending", response_model=List[SessionResponse], tags=["Admin"])

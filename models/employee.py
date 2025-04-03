@@ -222,12 +222,22 @@ class Employee(Document):
     account_activated: bool = Field(default=False, description="Whether the employee's account is activated")
     last_ping: Optional[datetime.datetime] = Field(default=None, description="Last time when user was pinged")
     is_first_login: bool = Field(default=True, description="Whether this is the user's first login")
+    meeting_link: str = Field(default="", description="HR's meeting link for virtual meetings")
     
     @field_validator("employee_id")
     @classmethod
     def validate_employee_id(cls, v):
         if not v.startswith("EMP") or not len(v) == 7 or not v[3:].isdigit():
             raise ValueError("Employee ID must be in the format EMP followed by 4 digits")
+        return v
+    
+    @field_validator("meeting_link")
+    @classmethod
+    def validate_meeting_link(cls, v, values):
+        if "role" in values and values["role"] == Role.HR and not v:
+            return ""  # Initialize empty string for HR
+        elif "role" in values and values["role"] != Role.HR:
+            return ""  # Non-HR users don't need a meeting link
         return v
     
     class Settings:

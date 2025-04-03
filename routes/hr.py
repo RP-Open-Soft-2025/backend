@@ -7,7 +7,6 @@ from models.employee import Employee, Role
 from models.chat import Chat
 from models.meet import Meet
 from datetime import datetime
-import uuid
 from pydantic import BaseModel, Field
 from typing import Optional
 
@@ -18,6 +17,8 @@ class CreateSessionRequest(BaseModel):
     scheduled_at: datetime = Field(..., description="When the session is scheduled for")
     notes: Optional[str] = Field(default=None, description="Any additional notes about the session")
 
+class UpdateMeetingLinkRequest(BaseModel):
+    meeting_link: str = Field(..., description="HR's meeting link for virtual meetings")
 
 async def verify_hr(token: str = Depends(JWTBearer())):
     """Verify that the user is an HR."""
@@ -229,11 +230,11 @@ async def create_session_hr(
         notes=session_data.notes
     )
     await session.save()
-    
+
     return {
-        "message": "Chat has created successfully",
+        "message": "Session has created successfully",
         "chat_id": chat.chat_id,
-        "session_id": session.session_id
+        "session_id": session.session_id,
     }
  
 
@@ -266,5 +267,34 @@ async def get_hr_meets(hr = Depends(verify_hr)):
     
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching meets: {str(e)}")
+
+@router.patch("/update-meeting-link", tags=["HR"])
+async def update_meeting_link(
+    request: UpdateMeetingLinkRequest,
+    hr: dict = Depends(verify_hr)
+):
+    """
+    Update the HR's meeting link that will be used for virtual meetings.
+    Only HR personnel can access this endpoint.
+    """
+    try:
+        # Get HR user
+        hr_user = await Employee.find_one({"employee_id": hr["employee_id"], "role": Role.HR})
+        if not hr_user:
+            raise HTTPException(status_code=403, detail="Error HR not found")
+        
+        # Update meeting link
+        hr_user.meeting_link = request.meeting_link
+        await hr_user.save()
+        
+        return {
+            "message": "Meeting link updated successfully",
+            "meeting_link": hr_user.meeting_link
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error updating meeting link: {str(e)}"
+        )
 
 
