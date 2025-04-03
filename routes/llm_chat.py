@@ -12,6 +12,7 @@ import requests
 from routes.admin_hr import verify_admin_or_hr
 from routes.employee import ChatSummary, EmployeeChatsResponse 
 from models import Employee, Notification
+from models.employee import Role
 
 router = APIRouter()
 llm_add = Settings().LLM_ADDR
