@@ -42,7 +42,6 @@ class SessionResponse(BaseModel):
     chat_id: str
     status: str
     scheduled_at: datetime.datetime
-    chain_id: str
 
 class ReassignHrRequest(BaseModel):
     newHrId: str = Field(..., description="ID of the new HR to assign")
@@ -370,8 +369,7 @@ async def get_active_and_pending_sessions(admin: dict = Depends(verify_admin)):
                 employee_id=session.user_id,
                 chat_id=session.chat_id,
                 status=session.status.value,
-                scheduled_at=session.scheduled_at,
-                chain_id=session.chain_id
+                scheduled_at=session.scheduled_at
             )
             for session in sessions
         ]
