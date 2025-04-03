@@ -50,6 +50,10 @@ class Chain(Document):
     @classmethod
     async def get_chains_by_employee(cls, employee_id: str):
         return await cls.find({"employee_id": employee_id}).to_list()
+    
+    @classmethod
+    async def get_by_id(cls, chain_id: str):
+        return await cls.find_one({"chain_id": chain_id})
 
     @classmethod
     async def get_chains_by_status(cls, status: ChainStatus):
