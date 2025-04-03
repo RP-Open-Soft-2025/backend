@@ -78,7 +78,7 @@ async def admin_schedule_meeting(
         scheduled_at=scheduled_datetime,
         duration_minutes=meeting_data.duration_minutes,
         status=MeetStatus.SCHEDULED,
-        meeting_link="",
+        meeting_link=meeting_data.meeting_link,
         location=meeting_data.location,
         notes=meeting_data.notes
     )
