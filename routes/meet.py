@@ -6,7 +6,6 @@ from models.employee import Employee, Role
 from models.meet import Meet, MeetStatus
 from auth.jwt_bearer import JWTBearer
 from auth.jwt_handler import decode_jwt
-from utils.zoom_meet import generate_meet_link
 
 router = APIRouter()
 
@@ -65,12 +64,12 @@ async def admin_schedule_meeting(
         )
     
     # Generate Zoom meeting link
-    meeting_details = await generate_meet_link()
-    if not meeting_details:
-        raise HTTPException(
-            status_code=500,
-            detail="Failed to generate meeting link"
-        )
+    # meeting_details = await generate_meet_link()
+    # if not meeting_details:
+    #     raise HTTPException(
+    #         status_code=500,
+    #         detail="Failed to generate meeting link"
+    #     )
     
     # Create the meeting
     new_meeting = Meet(
@@ -79,9 +78,7 @@ async def admin_schedule_meeting(
         scheduled_at=scheduled_datetime,
         duration_minutes=meeting_data.duration_minutes,
         status=MeetStatus.SCHEDULED,
-        meeting_link=meeting_details['meeting_link'],
-        meeting_id=meeting_details['meeting_id'],
-        meeting_password=meeting_details['password'],
+        meeting_link="",
         location=meeting_data.location,
         notes=meeting_data.notes
     )
