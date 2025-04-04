@@ -689,7 +689,7 @@ async def get_chain_messages(
         for chat in chats:
             for message in chat.messages:
                 all_messages.append(ChatMessage(
-                    sender=message.sender.value,
+                    sender=message.sender_type,
                     text=message.text,
                     timestamp=message.timestamp
                 ))
