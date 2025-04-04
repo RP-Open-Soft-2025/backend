@@ -6,9 +6,27 @@ from models.session import Session, SessionStatus
 from models.employee import Employee, Role
 from models.chat import Chat
 from models.meet import Meet
-from datetime import datetime
 from pydantic import BaseModel, Field
-from typing import Optional
+from typing import Optional, List
+from models.chain import Chain, ChainStatus
+from datetime import datetime
+
+
+
+
+
+class ChainResponse(BaseModel):
+    chain_id: str
+    employee_id: str
+    session_ids: List[str]
+    status: ChainStatus
+    context: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+    completed_at: Optional[datetime] = None
+    scheduled_at: Optional[datetime] = None
+    cancelled_at: Optional[datetime] = None
+    notes: Optional[str] = None
 
 router = APIRouter()
 # security = OAuth2PasswordBearer(tokenUrl="token")
@@ -330,4 +348,28 @@ async def get_user(userid: str, hr : dict = Depends(verify_hr)):
         raise HTTPException(
             status_code=500,
             detail=f"Error fetching user details: {str(e)}"
+        )
+
+@router.get("/chains/employee/{employee_id}", response_model=List[ChainResponse], tags=["HR"])
+async def get_employee_chains(employee_id: str, hr: dict = Depends(verify_hr)):
+    """
+    Get all chains for a specific employee.
+    Only administrators can access this endpoint.
+    """
+    try:
+        user_det = await Employee.find_one({"employee_id": employee_id})
+        if not user_det:
+            raise HTTPException(status_code=404, detail="Employee not found")
+        if user_det.manager_id != hr["employee_id"]:
+            raise HTTPException(status_code=403, detail="Not authorized to access this employee's chains")
+        
+        # Get all chains for the employee
+        chains = await Chain.find({"employee_id": employee_id}).to_list()
+        if not chains:
+            raise HTTPException(status_code=404, detail="No chains found for this employee")
+        return chains
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error retrieving employee chains: {str(e)}"
         )
