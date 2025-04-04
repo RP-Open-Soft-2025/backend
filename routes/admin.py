@@ -80,17 +80,68 @@ class CreateChainRequest(BaseModel):
         description="When to schedule the first session. Defaults to tomorrow at 10 AM."
     )
 
+class BlockUserRequest(BaseModel):
+    employee_id: str = Field(..., description="ID of the employee to block/unblock")
+    reason: Optional[str] = Field(default=None, description="Reason for blocking the user")
+
 async def verify_admin(token: str = Depends(JWTBearer())):
     """Verify that the user is an admin."""
+    if not token or token.lower() == "not authenticated":
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    
     payload = decode_jwt(token)
-    # print(payload)
-    if not payload or payload.get("role") != "admin":
-        raise HTTPException(
-            status_code=403,
-            detail="Only administrators can access this endpoint"
-        )
-    return payload
+    admin_user = await Employee.find_one({"employee_id": payload["employee_id"], "role": Role.ADMIN})
+    
+    if not admin_user:
+        raise HTTPException(status_code=403, detail="Only administrators can access this endpoint")
+    
+    return admin_user
 
+async def verify_hr(token: str = Depends(JWTBearer())):
+    """Verify that the user is an HR."""
+    if not token or token.lower() == "not authenticated":
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    
+    payload = decode_jwt(token)
+    hr_user = await Employee.find_one({"employee_id": payload["employee_id"], "role": {"$in": [Role.ADMIN, Role.HR]}})
+    
+    if not hr_user:
+        raise HTTPException(status_code=403, detail="Only Admin / HR personnel can access this endpoint")
+    
+    return hr_user
+
+@router.get("/missing/{role}", tags=["Admin"])
+async def get_missing_users(role: Role, admin: dict = Depends(verify_admin)):
+    """
+        Returns missing employees based on role.
+        Only administrators can access this endpoint.
+
+        Role filtering:
+        - 'employee' → IDs in range EMP0001 - EMP0999
+        - 'hr'       → IDs in range EMP1001 - EMP1999
+    """
+    try:
+        # Define ID ranges
+        if role == Role.EMPLOYEE:
+            all_possible_ids = {f"EMP{i:04d}" for i in range(1, 1000)}
+        elif role == Role.HR:
+            all_possible_ids = {f"EMP{i:04d}" for i in range(1001, 2000)}
+        else:
+            raise HTTPException(status_code=400, detail="Invalid role")
+
+        # Get existing employee IDs from database
+        existing_employees = await Employee.find_all()
+        existing_ids = {emp.employee_id for emp in existing_employees}
+
+        # Find missing IDs
+        missing_ids = list(all_possible_ids - existing_ids)
+
+        return {"missing_employee_ids": missing_ids}
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error fetching missing employees: {str(e)}"
+        )
 
 @router.post("/create-user", tags=["Admin"])
 async def create_user(
@@ -206,271 +257,6 @@ async def delete_user(
             detail=f"Error deleting user: {str(e)}"
         )
 
-@router.post("/session/{user_id}", tags=["Admin"])
-async def create_session(
-    user_id: str,
-    session_data: CreateSessionRequest,
-    admin: dict = Depends(verify_admin)
-):
-    """
-    Create a new session for an employee.
-    Only administrators can access this endpoint.
-    """
-    # Verify the employee exists
-    employee = await Employee.get_by_id(user_id)
-    if not employee:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Employee with ID {user_id} not found"
-        )
-    
-    # check if there is an active or pending session for the employee
-    active_session = await Session.find_one({"user_id": user_id, "status": SessionStatus.ACTIVE})
-    if active_session:
-        raise HTTPException(
-            status_code=400,
-            detail="Employee already has an active session"
-        )
-
-    pending_session = await Session.find_one({"user_id": user_id, "status": SessionStatus.PENDING})
-    if pending_session:
-        raise HTTPException(
-            status_code=400,
-            detail="Employee already has a pending session"
-        )
-    
-    # Create a new chat for the session
-    chat = Chat(user_id=user_id)
-    await chat.save()
-
-    # Create a new session
-    session = Session(
-        user_id=user_id,
-        chat_id=chat.chat_id,
-        scheduled_at=session_data.scheduled_at,
-        notes=session_data.notes
-    )
-    await session.save()
-
-    return {
-        "message": "Chat has created successfully",
-        "chat_id": chat.chat_id,
-        "session_id": session.session_id,
-    }
-
-@router.get("/sessions/pending", response_model=List[SessionResponse], tags=["Admin"])
-async def get_all_active_sessions(admin: dict = Depends(verify_admin)):
-    """
-    Get all sessions in the system.
-    Only administrators can access this endpoint.
-    Returns a list of all sessions with their details.
-    """
-    try:
-        # Get all sessions
-        sessions = await Session.find({"status": SessionStatus.PENDING}).to_list()
-        
-        # Convert sessions to response format
-        session_responses = [
-            SessionResponse(
-                session_id=session.session_id,
-                employee_id=session.user_id,
-                chat_id=session.chat_id,
-                status=session.status.value,
-                scheduled_at=session.scheduled_at
-            )
-            for session in sessions
-        ]
-        
-        return session_responses
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error fetching sessions: {str(e)}"
-        )
-    
-@router.get("/sessions/completed", response_model=List[SessionResponse], tags=["Admin"])
-async def get_all_active_sessions(admin: dict = Depends(verify_admin)):
-    """
-    Get all sessions in the system.
-    Only administrators can access this endpoint.
-    Returns a list of all sessions with their details.
-    """
-    try:
-        # Get all sessions
-        sessions = await Session.find({"status": SessionStatus.COMPLETED}).to_list()
-        
-        # Convert sessions to response format
-        session_responses = [
-            SessionResponse(
-                session_id=session.session_id,
-                employee_id=session.user_id,
-                chat_id=session.chat_id,
-                status=session.status.value,
-                scheduled_at=session.scheduled_at
-            )
-            for session in sessions
-        ]
-        
-        return session_responses
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error fetching sessions: {str(e)}"
-        )
-    
-@router.get("/sessions/active", response_model=List[SessionResponse], tags=["Admin"])
-async def get_all_active_sessions(admin: dict = Depends(verify_admin)):
-    """
-    Get all sessions in the system.
-    Only administrators can access this endpoint.
-    Returns a list of all sessions with their details.
-    """
-    try:
-        # Get all sessions
-        sessions = await Session.find({"status": SessionStatus.ACTIVE}).to_list()
-        
-        # Convert sessions to response format
-        session_responses = [
-            SessionResponse(
-                session_id=session.session_id,
-                employee_id=session.user_id,
-                chat_id=session.chat_id,
-                status=session.status.value,
-                scheduled_at=session.scheduled_at
-            )
-            for session in sessions
-        ]
-        
-        return session_responses
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error fetching sessions: {str(e)}"
-        )
-
-
-@router.get("/sessions", response_model=List[SessionResponse], tags=["Admin"])
-async def get_active_and_pending_sessions(admin: dict = Depends(verify_admin)):
-    """
-    Get all active and pending sessions in the system.
-    Only administrators can access this endpoint.
-    Returns a list of all active and pending sessions with their details.
-    """
-    try:
-        # Get all active and pending sessions
-        sessions = await Session.find(
-            {"status": {"$in": [SessionStatus.ACTIVE, SessionStatus.PENDING]}}
-        ).to_list()
-        
-        # Convert sessions to response format
-        session_responses = [
-            SessionResponse(
-                session_id=session.session_id,
-                employee_id=session.user_id,
-                chat_id=session.chat_id,
-                status=session.status.value,
-                scheduled_at=session.scheduled_at
-            )
-            for session in sessions
-        ]
-        
-        return session_responses
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error fetching sessions: {str(e)}"
-        )
-    
- 
-@router.get("/missing/{role}", tags=["Admin"])
-async def get_missing_users(role: Role, admin: dict = Depends(verify_admin)):
-    """
-        Returns missing employees based on role.
-        Only administrators can access this endpoint.
-
-        Role filtering:
-        - 'employee' → IDs in range EMP0001 - EMP0999
-        - 'hr'       → IDs in range EMP1001 - EMP1999
-    """
-    try:
-        # Define ID ranges
-        if role == Role.EMPLOYEE:
-            all_possible_ids = {f"EMP{i:04d}" for i in range(1, 1000)}
-        elif role == Role.HR:
-            all_possible_ids = {f"EMP{i:04d}" for i in range(1001, 2000)}
-        else:
-            raise HTTPException(status_code=400, detail="Invalid role")
-
-        # Get existing employee IDs from database
-        existing_employees = await Employee.find_all()
-        existing_ids = {emp.employee_id for emp in existing_employees}
-
-        # Find missing IDs
-        missing_ids = list(all_possible_ids - existing_ids)
-
-        return {"missing_employee_ids": missing_ids}
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error fetching missing employees: {str(e)}"
-        )
-
-@router.get("/list-users", tags=["Admin"])
-async def list_users(admin: dict = Depends(verify_admin)):
-    """
-    Get a list of all users with their session data.
-    Only administrators can access this endpoint.
-    """
-    try:
-        # Get all employees
-        employees = await Employee.find_all()
-        
-        # Format the response
-        users = []
-        for employee in employees:
-            try:
-                # Get the latest vibe meter entry for session data
-                latest_vibe = None
-                if hasattr(employee, 'company_data') and employee.company_data and hasattr(employee.company_data, 'vibemeter') and employee.company_data.vibemeter:
-                    latest_vibe = employee.company_data.vibemeter[-1]
-                
-                # Create user data with proper error handling
-                user_data = {
-                    "userId": getattr(employee, 'employee_id', ''),
-                    "name": getattr(employee, 'name', ''),
-                    "email": getattr(employee, 'email', ''),
-                    "role": getattr(employee, 'role', ''),
-                    "status": "active" if not getattr(employee, 'is_blocked', False) else "blocked",
-                    "sessionData": {
-                        "latestVibe": latest_vibe,
-                        "moodScores": [
-                            {
-                                "timestamp": vibe.Response_Date.isoformat() if vibe.Response_Date else None,
-                                "Vibe_Score": vibe.Vibe_Score,
-                                # "Emotion_Zone": vibe.Emotion_Zone
-                            }
-                            for vibe in (employee.company_data.vibemeter if hasattr(employee, 'company_data') and employee.company_data and hasattr(employee.company_data, 'vibemeter') else [])
-                        ]
-                    },
-                    "lastPing": employee.last_ping.isoformat() 
-
-                }
-                users.append(user_data)
-            except Exception as e:
-
-                print(f"Error processing employee {getattr(employee, 'employee_id', 'unknown')}: {str(e)}")
-                continue
-        
-        return {"users": users}
-    except Exception as e:
-        import traceback
-        print(f"Error in list_users: {str(e)}")
-        print(traceback.format_exc())
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error fetching users: {str(e)}"
-        )
-
 @router.patch("/reassign-hr/{userId}", tags=["Admin"])
 async def reassign_hr(
     userId: str,
@@ -534,7 +320,7 @@ async def list_hr(admin: dict = Depends(verify_admin)):
         hrs = []
         for hr in hr_personnel:
             # Count assigned users
-            assigned_users = await Employee.find({"manager_id": hr.employee_id}).count()
+            assigned_users = await Employee.get_employees_by_manager(hr.employee_id)
             
             hr_data = {
                 "hrId": hr.employee_id,
@@ -550,16 +336,560 @@ async def list_hr(admin: dict = Depends(verify_admin)):
             detail=f"Error fetching HR list: {str(e)}"
         )
 
-
-@router.get("/meets" , tags=["Admin"])
-async def get_meets(admin: dict = Depends(verify_admin)):
+@router.get("/list-users", tags=["HR"])
+async def list_users(hr: dict = Depends(verify_hr)):
     """
-    Get a list of all meets with their details.
-    Only administrators can access this endpoint.
+    Get a list of all users with their session data.
+    Only Admin / HR personnel can access this endpoint.
     """
     try:
-        # Get all meets
-        meets = await Meet.find_all().to_list()
+        if hr["role"] == Role.HR:
+            employees = await Employee.get_employees_by_manager(hr["employee_id"])
+        else: # Get all employees
+            employees = await Employee.find_all()
+        
+        # Format the response
+        users = []
+        for employee in employees:
+            try:
+                # Get the latest vibe meter entry for session data
+                latest_vibe = None
+                if hasattr(employee, 'company_data') and employee.company_data and hasattr(employee.company_data, 'vibemeter') and employee.company_data.vibemeter:
+                    latest_vibe = employee.company_data.vibemeter[-1]
+                
+                # Create user data with proper error handling
+                user_data = {
+                    "userId": getattr(employee, 'employee_id', ''),
+                    "name": getattr(employee, 'name', ''),
+                    "email": getattr(employee, 'email', ''),
+                    "role": getattr(employee, 'role', ''),
+                    "status": "active" if not getattr(employee, 'is_blocked', False) else "blocked",
+                    "sessionData": {
+                        "latestVibe": latest_vibe,
+                        "moodScores": [
+                            {
+                                "timestamp": vibe.Response_Date.isoformat() if vibe.Response_Date else None,
+                                "Vibe_Score": vibe.Vibe_Score,
+                                # "Emotion_Zone": vibe.Emotion_Zone
+                            }
+                            for vibe in (employee.company_data.vibemeter if hasattr(employee, 'company_data') and employee.company_data and hasattr(employee.company_data, 'vibemeter') else [])
+                        ]
+                    },
+                    "lastPing": employee.last_ping.isoformat() 
+
+                }
+                users.append(user_data)
+            except Exception as e:
+
+                print(f"Error processing employee {getattr(employee, 'employee_id', 'unknown')}: {str(e)}")
+                continue
+        
+        return {"users": users}
+    except Exception as e:
+        import traceback
+        print(f"Error in list_users: {str(e)}")
+        print(traceback.format_exc())
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error fetching users: {str(e)}"
+        )
+
+@router.post("/block-user", tags=["HR"])
+async def block_user(
+    block_data: BlockUserRequest,
+    hr: dict = Depends(verify_hr)
+):
+    """
+    Block a user from accessing the system.
+    Admins can block any user, HR can only block users assigned to them.
+    """
+    # Get the employee to block
+    employee = await Employee.get_by_id(block_data.employee_id)
+    if not employee:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Employee with ID {block_data.employee_id} not found"
+        )
+    
+    if hr["role"] == Role.HR and employee.manager_id != hr["employee_id"]:
+        raise HTTPException(
+            status_code=403,
+            detail="You can only block employees assigned to you"
+        )
+
+    # Check if already blocked
+    if employee.is_blocked:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Employee {block_data.employee_id} is already blocked"
+        )
+
+    # Block the employee
+    employee.is_blocked = True
+    employee.blocked_at = datetime.datetime.now(datetime.UTC)
+    employee.blocked_by = hr["employee_id"]
+    employee.blocked_reason = block_data.reason
+
+    try:
+        await employee.save()
+        return {
+            "message": f"Employee {block_data.employee_id} blocked successfully",
+            "blocked_at": employee.blocked_at,
+            "blocked_by": employee.blocked_by,
+            "reason": employee.blocked_reason
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error blocking user: {str(e)}"
+        )
+
+@router.post("/unblock-user", tags=["HR"])
+async def unblock_user(
+    block_data: BlockUserRequest,
+    hr: dict = Depends(verify_hr)
+):
+    """
+    Unblock a user from accessing the system.
+    Admins can unblock any user, HR can only unblock users assigned to them.
+    """
+
+    # Get the employee to unblock
+    employee = await Employee.get_by_id(block_data.employee_id)
+    if not employee:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Employee with ID {block_data.employee_id} not found"
+        )
+
+    if hr["role"] == Role.HR and employee.manager_id != hr["employee_id"]:
+        raise HTTPException(
+            status_code=403,
+            detail="You can only unblock employees assigned to you"
+        )
+
+    # Check if already unblocked
+    if not employee.is_blocked:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Employee {block_data.employee_id} is not blocked"
+        )
+
+    # Unblock the employee
+    employee.is_blocked = False
+    employee.blocked_at = None
+    employee.blocked_by = None
+
+    try:
+        await employee.save()
+        return {
+            "message": f"Employee {block_data.employee_id} unblocked successfully"
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error unblocking user: {str(e)}"
+        )
+
+@router.get('/user-det/{userid}', tags=["HR"])
+async def get_user(userid: str, hr: dict = Depends(verify_hr)):
+    """
+    Get details of a specific user.
+    Only Admin / HR personnel can access this endpoint.
+    """
+    try:
+        user_det = await Employee.get_by_id(userid)
+        if not user_det:
+            raise HTTPException(
+                status_code=404,
+                detail=f"User with ID {userid} not found"
+            )
+        
+        if hr["role"] == Role.HR and user_det.manager_id != hr["employee_id"]:
+            raise HTTPException(
+                status_code=403,
+                detail="Not authorized to access this user"
+            )
+        
+        # Convert to dict and exclude sensitive information
+        user_dict = user_det.dict(exclude={'password'})
+        return user_dict
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching user details: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error fetching user details: {str(e)}"
+        )
+
+class UpdateMeetingLinkRequest(BaseModel):
+    meeting_link: str = Field(..., description="HR's meeting link for virtual meetings")
+
+@router.patch("/update-meeting-link", tags=["HR"])
+async def update_meeting_link(
+    request: UpdateMeetingLinkRequest,
+    hr: dict = Depends(verify_hr)
+):
+    """
+    Update the HR's meeting link that will be used for virtual meetings.
+    Only HR personnel can access this endpoint.
+    """
+    try:
+        # Update meeting link
+        hr.meeting_link = request.meeting_link
+        await hr.save()
+        
+        return {
+            "message": "Meeting link updated successfully",
+            "meeting_link": hr.meeting_link
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error updating meeting link: {str(e)}"
+        )
+
+@router.post("/session/{user_id}", tags=["HR"])
+async def create_session(
+    user_id: str,
+    session_data: CreateSessionRequest,
+    hr: dict = Depends(verify_hr)
+):
+    """
+    Create a new session for an employee.
+    Only Admin / HR personnel can access this endpoint.
+    """
+    # Verify the employee exists
+    employee = await Employee.get_by_id(user_id)
+    if not employee:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Employee with ID {user_id} not found"
+        )
+    
+    # Verify if the employee is assigned to this HR
+    if hr["role"] == Role.HR and employee.manager_id != hr["employee_id"]:
+        raise HTTPException(status_code=403, detail="Not authorized to create session for this employee")
+    
+    # check if there is an active or pending session for the employee
+    active_session = await Session.find_one({"user_id": user_id, "status": SessionStatus.ACTIVE})
+    if active_session:
+        raise HTTPException(
+            status_code=400,
+            detail="Employee already has an active session"
+        )
+
+    pending_session = await Session.find_one({"user_id": user_id, "status": SessionStatus.PENDING})
+    if pending_session:
+        raise HTTPException(
+            status_code=400,
+            detail="Employee already has a pending session"
+        )
+    
+    # Create a new chat for the session
+    chat = Chat(user_id=user_id)
+    await chat.save()
+
+    # Create a new session
+    session = Session(
+        user_id=user_id,
+        chat_id=chat.chat_id,
+        scheduled_at=session_data.scheduled_at,
+        notes=session_data.notes
+    )
+    await session.save()
+
+    return {
+        "message": "Session has created successfully",
+        "chat_id": chat.chat_id,
+        "session_id": session.session_id,
+    }
+
+@router.get("/sessions/pending", response_model=List[SessionResponse], tags=["HR"])
+async def get_all_active_sessions(hr: dict = Depends(verify_hr)):
+    """
+    Get all pending sessions in the system or for a given HR.
+    Only Admin / HR personnel can access this endpoint.
+    Returns a list of all pending sessions with their details.
+    """
+    try:
+        # Get all pending sessions for a given HR
+        if hr["role"] == Role.HR:
+            employees = await Employee.get_employees_by_manager(hr["employee_id"])
+            employee_ids = [emp.employee_id for emp in employees]
+            sessions = await Session.find({"user_id": {"$in": employee_ids}, "status": SessionStatus.PENDING}).to_list()
+        else: # Get all pending sessions
+            sessions = await Session.find({"status": SessionStatus.PENDING}).to_list()
+        
+        # Convert sessions to response format
+        session_responses = [
+            SessionResponse(
+                session_id=session.session_id,
+                employee_id=session.user_id,
+                chat_id=session.chat_id,
+                status=session.status.value,
+                scheduled_at=session.scheduled_at
+            )
+            for session in sessions
+        ]
+        
+        return session_responses
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error fetching sessions: {str(e)}"
+        )
+    
+@router.get("/sessions/completed", response_model=List[SessionResponse], tags=["HR"])
+async def get_all_active_sessions(hr: dict = Depends(verify_hr)):
+    """
+    Get all completed sessions in the system or for a given HR.
+    Only Admin / HR personnel can access this endpoint.
+    Returns a list of all completed sessions with their details.
+    """
+    try:
+        # Get all completed sessions for a given HR
+        if hr["role"] == Role.HR:
+            employees = await Employee.get_employees_by_manager(hr["employee_id"])
+            employee_ids = [emp.employee_id for emp in employees]
+            sessions = await Session.find({"user_id": {"$in": employee_ids}, "status": SessionStatus.COMPLETED}).to_list()
+        else: # Get all sessions
+            sessions = await Session.find({"status": SessionStatus.COMPLETED}).to_list()
+        
+        # Convert sessions to response format
+        session_responses = [
+            SessionResponse(
+                session_id=session.session_id,
+                employee_id=session.user_id,
+                chat_id=session.chat_id,
+                status=session.status.value,
+                scheduled_at=session.scheduled_at
+            )
+            for session in sessions
+        ]
+        
+        return session_responses
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error fetching sessions: {str(e)}"
+        )
+
+@router.get("/sessions/active", response_model=List[SessionResponse], tags=["HR"])
+async def get_all_active_sessions(hr: dict = Depends(verify_hr)):
+    """
+    Get all active sessions in the system or for a given HR.
+    Only Admin / HR personnel can access this endpoint.
+    Returns a list of all active sessions with their details.
+    """
+    try:
+        # Get all active sessions for a given HR
+        if hr["role"] == Role.HR:
+            employees = await Employee.get_employees_by_manager(hr["employee_id"])
+            employee_ids = [emp.employee_id for emp in employees]
+            sessions = await Session.find({"user_id": {"$in": employee_ids}, "status": SessionStatus.ACTIVE}).to_list()
+        else: # Get all active sessions
+            sessions = await Session.find({"status": SessionStatus.ACTIVE}).to_list()
+        
+        # Convert sessions to response format
+        session_responses = [
+            SessionResponse(
+                session_id=session.session_id,
+                employee_id=session.user_id,
+                chat_id=session.chat_id,
+                status=session.status.value,
+                scheduled_at=session.scheduled_at
+            )
+            for session in sessions
+        ]
+        
+        return session_responses
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error fetching sessions: {str(e)}"
+        )
+
+@router.get("/sessions", response_model=List[SessionResponse], tags=["HR"])
+async def get_active_and_pending_sessions(hr: dict = Depends(verify_hr)):
+    """
+    Get all active and pending sessions in the system.
+    Only Admin / HR personnel can access this endpoint.
+    Returns a list of all active and pending sessions with their details.
+    """
+    try:
+        # Get all active and pending sessions for a given HR
+        if hr["role"] == Role.HR:
+            employees = await Employee.get_employees_by_manager(hr["employee_id"])
+            employee_ids = [emp.employee_id for emp in employees]
+            sessions = await Session.find(
+                {"user_id": {"$in": employee_ids}, "status": {"$in": [SessionStatus.ACTIVE, SessionStatus.PENDING]}}
+            ).to_list()
+        else: # Get all active and pending sessions
+            sessions = await Session.find(
+                {"status": {"$in": [SessionStatus.ACTIVE, SessionStatus.PENDING]}}
+            ).to_list()
+        
+        # Convert sessions to response format
+        session_responses = [
+            SessionResponse(
+                session_id=session.session_id,
+                employee_id=session.user_id,
+                chat_id=session.chat_id,
+                status=session.status.value,
+                scheduled_at=session.scheduled_at
+            )
+            for session in sessions
+        ]
+        
+        return session_responses
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error fetching sessions: {str(e)}"
+        )
+
+class SessionStatusUpdate(BaseModel):
+    session_id: str = Field(..., description="ID of the session to update")
+    notes: Optional[str] = Field(default=None, description="Optional notes about the status change")
+
+@router.patch("/session/complete", tags=["HR"])
+async def complete_session(
+    session_data: SessionStatusUpdate,
+    hr: dict = Depends(verify_hr)
+):
+    """
+    Mark a session as completed.
+    Only administrators and HR can access this endpoint.
+    HR can only complete sessions for employees assigned to them.
+    """
+    # Get the session
+    session = await Session.get(session_data.session_id)
+    if not session:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Session with ID {session_data.session_id} not found"
+        )
+    
+    employee = await Employee.get_by_id(session.user_id)
+    if not employee:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Employee with ID {session.user_id} not found"
+        )
+
+    if hr["role"] == Role.HR and employee.manager_id != hr["employee_id"]:
+        raise HTTPException(
+            status_code=403,
+            detail="You can only complete sessions for employees assigned to you"
+        )
+
+    # Check if session is already completed
+    if session.status == SessionStatus.COMPLETED:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Session {session_data.session_id} is already completed"
+        )
+
+    # Check if session is active
+    if session.status != SessionStatus.ACTIVE:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Session {session_data.session_id} must be active to be completed"
+        )
+
+    try:
+        # Update session status
+        session.status = SessionStatus.COMPLETED
+        session.completed_at = datetime.datetime.now(datetime.UTC)
+        session.notes = session_data.notes
+        await session.save()
+
+        return {
+            "message": f"Session {session_data.session_id} marked as completed",
+            "completed_at": session.completed_at,
+            "notes": session.notes
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error completing session: {str(e)}"
+        )
+
+@router.patch("/session/activate", tags=["HR"])
+async def activate_session(
+    session_data: SessionStatusUpdate,
+    hr: dict = Depends(verify_hr)
+):
+    """
+    Mark a session as active.
+    Only administrators and HR can access this endpoint.
+    HR can only activate sessions for employees assigned to them.
+    """
+
+    # Get the session
+    session = await Session.get(session_data.session_id)
+    if not session:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Session with ID {session_data.session_id} not found"
+        )
+
+    employee = await Employee.get_by_id(session.user_id)
+    if not employee:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Employee with ID {session.user_id} not found"
+        )
+    
+    if hr["role"] == Role.HR and employee.manager_id != hr["employee_id"]:
+        raise HTTPException(
+            status_code=403,
+            detail="You can only activate sessions for employees assigned to you"
+        )
+    # Check if session is already active
+    if session.status == SessionStatus.ACTIVE:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Session {session_data.session_id} is already active"
+        )
+
+    # Check if session is completed
+    if session.status == SessionStatus.COMPLETED:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Session {session_data.session_id} cannot be reactivated after completion"
+        )
+
+    try:
+        # Update session status
+        session.status = SessionStatus.ACTIVE
+        session.notes = session_data.notes
+        await session.save()
+
+        return {
+            "message": f"Session {session_data.session_id} marked as active",
+            "notes": session.notes
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error activating session: {str(e)}"
+        )
+
+@router.get("/meets" , tags=["HR"])
+async def get_meets(hr: dict = Depends(verify_hr)):
+    """
+    Get a list of all meets with their details.
+    Only Admin / HR personnel can access this endpoint.
+    """
+    try:
+        # Get all meets for a given HR
+        if hr["role"] == Role.HR:
+            meets = await Meet.get_meets_with_user(hr["employee_id"])
+        else: # Get all meets
+            meets = await Meet.find_all().to_list()
 
         meets_list = []
         for meet in meets:
@@ -584,82 +914,33 @@ async def get_meets(admin: dict = Depends(verify_admin)):
             detail=f"Error fetching meets: {str(e)}"
         )
 
-@router.get('/user-det/{userid}', tags=["Admin"])
-async def get_user(userid: str, admin: dict = Depends(verify_admin)):
-    try:
-        user_det = await Employee.find_one({"employee_id": userid})
-        if not user_det:
-            raise HTTPException(
-                status_code=404,
-                detail=f"User with ID {userid} not found"
-            )
-        
-        # Convert to dict and exclude sensitive information
-        user_dict = user_det.dict(exclude={'password'})
-        return user_dict
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error fetching user details: {str(e)}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error fetching user details: {str(e)}"
-        )
-
-@router.post("/notification/create", response_model=NotificationResponse)
-async def create_notification(
-    notification: NotificationCreate,
-    admin: dict = Depends(verify_admin)
-):
-    """
-    Create a new notification for an employee (admin only).
-    """
-    # Verify employee exists
-    employee = await Employee.get_by_id(notification.employee_id)
-    if not employee:
-        raise HTTPException(
-            status_code=404,
-            detail="Employee not found"
-        )
-    
-    # Create notification
-    new_notification = Notification(
-        employee_id=notification.employee_id,
-        title=notification.title,
-        description=notification.description
-    )
-    await new_notification.save()
-    
-    return NotificationResponse(
-        id=str(new_notification.id),
-        employee_id=new_notification.employee_id,
-        title=new_notification.title,
-        description=new_notification.description,
-        created_at=new_notification.created_at,
-        status=new_notification.status
-    )
-
-@router.get("/chains", response_model=List[ChainResponse], tags=["Admin"])
-async def get_all_chains(admin: dict = Depends(verify_admin)):
+@router.get("/chains", response_model=List[ChainResponse], tags=["HR"])
+async def get_all_chains(hr: dict = Depends(verify_hr)):
     """
     Get all chains in the system.
-    Only administrators can access this endpoint.
-    Returns a list of all chains with their details.
+    Only Admin / HR personnel can access this endpoint.
+    Returns a list of all chains of all employees under the HR.
     """
     try:
-        chains = await Chain.find().to_list()
+        if hr["role"] == Role.HR:
+            employees = await Employee.get_employees_by_manager(hr["employee_id"])
+            employee_ids = [emp.employee_id for emp in employees]
+            chains = await Chain.find({"employee_id": {"$in": employee_ids}}).to_list()
+        else:
+            chains = await Chain.find().to_list()
         return chains
+        
     except Exception as e:
         raise HTTPException(
             status_code=500,
             detail=f"Error retrieving chains: {str(e)}"
         )
 
-@router.get("/chains/{chain_id}", response_model=ChainResponse, tags=["Admin"])
-async def get_chain_details(chain_id: str, admin: dict = Depends(verify_admin)):
+@router.get("/chains/{chain_id}", response_model=ChainResponse, tags=["HR"])
+async def get_chain_details(chain_id: str, hr: dict = Depends(verify_hr)):
     """
     Get details of a specific chain.
-    Only administrators can access this endpoint.
+    Only Admin / HR personnel can access this endpoint.
     """
     try:
         chain = await Chain.get_by_id(chain_id)
@@ -668,6 +949,20 @@ async def get_chain_details(chain_id: str, admin: dict = Depends(verify_admin)):
                 status_code=404,
                 detail=f"Chain with ID {chain_id} not found"
             )
+        
+        employee = await Employee.get_by_id(chain.employee_id)
+        if not employee:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Employee with ID {chain.employee_id} not found"
+            )
+
+        if hr["role"] == Role.HR and employee.manager_id != hr["employee_id"]:
+            raise HTTPException(
+                status_code=403,
+                detail="You can only access chains for employees assigned to you"
+            )
+        
         return chain
     except Exception as e:
         raise HTTPException(
@@ -675,26 +970,40 @@ async def get_chain_details(chain_id: str, admin: dict = Depends(verify_admin)):
             detail=f"Error retrieving chain details: {str(e)}"
         )
 
-@router.get("/chains/employee/{employee_id}", response_model=List[ChainResponse], tags=["Admin"])
-async def get_employee_chains(employee_id: str, admin: dict = Depends(verify_admin)):
+@router.get("/chains/employee/{employee_id}", response_model=List[ChainResponse], tags=["HR"])
+async def get_employee_chains(employee_id: str, hr: dict = Depends(verify_hr)):
     """
     Get all chains for a specific employee.
-    Only administrators can access this endpoint.
+    Only Admin / HR personnel can access this endpoint.
     """
     try:
+        employee = await Employee.get_by_id(employee_id)
+        if not employee:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Employee with ID {employee_id} not found"
+            )
+        
+        if hr["role"] == Role.HR and employee.manager_id != hr["employee_id"]:
+            raise HTTPException(
+                status_code=403,
+                detail="You can only access chains for employees assigned to you"
+            )
+        
         chains = await Chain.find({"employee_id": employee_id}).to_list()
         return chains
+        
     except Exception as e:
         raise HTTPException(
             status_code=500,
             detail=f"Error retrieving employee chains: {str(e)}"
         )
 
-@router.post("/chains/{chain_id}/complete", tags=["Admin"])
-async def complete_chain(chain_id: str, admin: dict = Depends(verify_admin)):
+@router.post("/chains/{chain_id}/complete", tags=["HR"])
+async def complete_chain(chain_id: str, hr: dict = Depends(verify_hr)):
     """
     Mark a chain as completed.
-    Only administrators can access this endpoint.
+    Only Admin / HR personnel can access this endpoint.
     """
     try:
         chain = await Chain.get_by_id(chain_id)
@@ -704,6 +1013,19 @@ async def complete_chain(chain_id: str, admin: dict = Depends(verify_admin)):
                 detail=f"Chain with ID {chain_id} not found"
             )
         
+        employee = await Employee.get_by_id(chain.employee_id)
+        if not employee:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Employee with ID {chain.employee_id} not found"
+            )
+        
+        if hr["role"] == Role.HR and employee.manager_id != hr["employee_id"]:
+            raise HTTPException(
+                status_code=403,
+                detail="You can only complete chains for employees assigned to you"
+            )
+
         if chain.status != ChainStatus.ACTIVE:
             raise HTTPException(
                 status_code=400,
@@ -718,11 +1040,11 @@ async def complete_chain(chain_id: str, admin: dict = Depends(verify_admin)):
             detail=f"Error completing chain: {str(e)}"
         )
 
-@router.post("/chains/{chain_id}/escalate", tags=["Admin"])
-async def escalate_chain(chain_id: str, admin: dict = Depends(verify_admin)):
+@router.post("/chains/{chain_id}/escalate", tags=["HR"])
+async def escalate_chain(chain_id: str, hr: dict = Depends(verify_hr)):
     """
     Mark a chain as escalated to HR.
-    Only administrators can access this endpoint.
+    Only Admin / HR personnel can access this endpoint.
     """
     try:
         chain = await Chain.get_by_id(chain_id)
@@ -730,6 +1052,19 @@ async def escalate_chain(chain_id: str, admin: dict = Depends(verify_admin)):
             raise HTTPException(
                 status_code=404,
                 detail=f"Chain with ID {chain_id} not found"
+            )
+        
+        employee = await Employee.get_by_id(chain.employee_id)
+        if not employee:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Employee with ID {chain.employee_id} not found"
+            )
+        
+        if hr["role"] == Role.HR and employee.manager_id != hr["employee_id"]:
+            raise HTTPException(
+                status_code=403,
+                detail="You can only escalate chains for employees assigned to you"
             )
         
         if chain.status != ChainStatus.ACTIVE:
@@ -746,11 +1081,11 @@ async def escalate_chain(chain_id: str, admin: dict = Depends(verify_admin)):
             detail=f"Error escalating chain: {str(e)}"
         )
 
-@router.post("/chains/{chain_id}/cancel", tags=["Admin"])
-async def cancel_chain(chain_id: str, admin: dict = Depends(verify_admin)):
+@router.post("/chains/{chain_id}/cancel", tags=["HR"])
+async def cancel_chain(chain_id: str, hr: dict = Depends(verify_hr)):
     """
     Cancel a chain.
-    Only administrators can access this endpoint.
+    Only Admin / HR personnel can access this endpoint.
     """
     try:
         chain = await Chain.get_by_id(chain_id)
@@ -758,6 +1093,19 @@ async def cancel_chain(chain_id: str, admin: dict = Depends(verify_admin)):
             raise HTTPException(
                 status_code=404,
                 detail=f"Chain with ID {chain_id} not found"
+            )
+        
+        employee = await Employee.get_by_id(chain.employee_id)
+        if not employee:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Employee with ID {chain.employee_id} not found"
+            )
+        
+        if hr["role"] == Role.HR and employee.manager_id != hr["employee_id"]:
+            raise HTTPException(
+                status_code=403,
+                detail="You can only cancel chains for employees assigned to you"
             )
         
         if chain.status not in [ChainStatus.ACTIVE, ChainStatus.ESCALATED]:
@@ -774,14 +1122,14 @@ async def cancel_chain(chain_id: str, admin: dict = Depends(verify_admin)):
             detail=f"Error cancelling chain: {str(e)}"
         )
 
-@router.post("/chains/create", response_model=ChainResponse, tags=["Admin"])
+@router.post("/chains/create", response_model=ChainResponse, tags=["HR"])
 async def create_chain(
     request: CreateChainRequest,
-    admin: dict = Depends(verify_admin)
+    hr: dict = Depends(verify_hr)
 ):
     """
     Create a new chain for an employee and schedule their first session.
-    Only administrators can access this endpoint.
+    Only Admin / HR personnel can access this endpoint.
     """
     try:
         # Verify the employee exists
@@ -790,6 +1138,12 @@ async def create_chain(
             raise HTTPException(
                 status_code=404,
                 detail=f"Employee with ID {request.employee_id} not found"
+            )
+        
+        if hr["role"] == Role.HR and employee.manager_id != hr["employee_id"]:
+            raise HTTPException(
+                status_code=403,
+                detail="You can only create chains for employees assigned to you"
             )
         
         # Check if employee already has an active chain
@@ -845,3 +1199,43 @@ async def create_chain(
             status_code=500,
             detail=f"Error creating chain: {str(e)}"
         )
+
+@router.post("/notification/create", response_model=NotificationResponse, tags=["HR"])
+async def create_notification(
+    notification: NotificationCreate,
+    hr: dict = Depends(verify_hr)
+):
+    """
+    Create a new notification for an employee 
+    Only Admin / HR personnel can access this endpoint.
+    """
+    # Verify employee exists
+    employee = await Employee.get_by_id(notification.employee_id)
+    if not employee:
+        raise HTTPException(
+            status_code=404,
+            detail="Employee not found"
+        )
+    
+    if hr["role"] == Role.HR and employee.manager_id != hr["employee_id"]:
+        raise HTTPException(
+            status_code=403,
+            detail="You can only create notifications for employees assigned to you"
+        )
+    
+    # Create notification
+    new_notification = Notification(
+        employee_id=notification.employee_id,
+        title=notification.title,
+        description=notification.description
+    )
+    await new_notification.save()
+    
+    return NotificationResponse(
+        id=str(new_notification.id),
+        employee_id=new_notification.employee_id,
+        title=new_notification.title,
+        description=new_notification.description,
+        created_at=new_notification.created_at,
+        status=new_notification.status
+    )

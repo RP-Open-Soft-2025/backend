@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 from datetime import datetime
 from config.config import Settings
 import requests
-from routes.admin_hr import verify_admin_or_hr
+from routes.admin import verify_hr
 from routes.employee import ChatSummary, EmployeeChatsResponse 
 from models import Employee, Notification
 from models.employee import Role
@@ -289,7 +289,7 @@ async def escalate_chain(request: ChainCompletionRequest):
 @router.get("/history/{chat_id}", response_model=List[ChatSummary])
 async def get_chat_history(
     chat_id: str,
-    employee: dict = Depends(verify_admin_or_hr)
+    employee: dict = Depends(verify_hr)
 ):
     """
     Get chat history for the employee.
