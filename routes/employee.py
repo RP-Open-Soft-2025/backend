@@ -117,6 +117,21 @@ class NotificationResponse(BaseModel):
     created_at: datetime.datetime
     status: NotificationStatus
 
+class SessionMessageGroup(BaseModel):
+    session_id: str
+    chat_id: str
+    messages: List[ChatMessage]
+    total_messages: int
+
+class ChainMessagesResponse(BaseModel):
+    chain_id: str
+    sessions: List[SessionMessageGroup]
+    total_sessions: int
+    total_messages: int
+    last_updated: datetime.datetime
+    chat_mode: str
+    is_escalated: bool = False
+
 async def verify_if_user(token: str = Depends(JWTBearer())):
     """Verify that the user is an employee."""
     payload = decode_jwt(token)
@@ -654,13 +669,13 @@ async def get_chain_details(chain_id: str, employee: dict = Depends(verify_emplo
             detail=f"Error retrieving chain details: {str(e)}"
         )
 
-@router.get("/chains/{chain_id}/messages", response_model=ChatMessagesResponse, tags=["Employee"])
+@router.get("/chains/{chain_id}/messages", response_model=ChainMessagesResponse, tags=["Employee"])
 async def get_chain_messages(
     chain_id: str,
     employee: dict = Depends(verify_employee)
 ):
     """
-    Get all messages from all sessions in a chain.
+    Get all messages from all sessions in a chain, grouped by session.
     """
     try:
         chain = await Chain.get_by_id(chain_id)
@@ -680,30 +695,53 @@ async def get_chain_messages(
         # Get all sessions in the chain
         sessions = await Session.find({"session_id": {"$in": chain.session_ids}}).to_list()
         
-        # Get all chats for these sessions
-        chat_ids = [session.chat_id for session in sessions]
-        chats = await Chat.find({"chat_id": {"$in": chat_ids}}).to_list()
+        # Process each session and its chat
+        session_groups = []
+        total_messages = 0
+        last_updated = datetime.datetime.min.replace(tzinfo=datetime.UTC)
         
-        # Collect all messages
-        all_messages = []
-        for chat in chats:
-            for message in chat.messages:
-                all_messages.append(ChatMessage(
-                    sender=message.sender_type,
-                    text=message.text,
-                    timestamp=message.timestamp
-                ))
+        for session in sessions:
+            # Get chat for this session
+            chat = await Chat.find_one({"chat_id": session.chat_id})
+            if chat and chat.messages:
+                # Convert messages to ChatMessage model
+                messages = [
+                    ChatMessage(
+                        sender=msg.sender_type.value,
+                        text=msg.text,
+                        timestamp=msg.timestamp
+                    ) for msg in chat.messages
+                ]
+                
+                # Sort messages by timestamp
+                messages.sort(key=lambda x: x.timestamp)
+                
+                # Update last_updated if this chat has more recent messages
+                if messages:
+                    latest_msg_time = max(msg.timestamp for msg in messages)
+                    if latest_msg_time > last_updated:
+                        last_updated = latest_msg_time
+                
+                # Create session group
+                session_group = SessionMessageGroup(
+                    session_id=session.session_id,
+                    chat_id=chat.chat_id,
+                    messages=messages,
+                    total_messages=len(messages)
+                )
+                session_groups.append(session_group)
+                total_messages += len(messages)
         
-        # Sort messages by timestamp
-        all_messages.sort(key=lambda x: x.timestamp)
+        # Sort session groups by their first message timestamp
+        session_groups.sort(
+            key=lambda x: min((msg.timestamp for msg in x.messages), default=datetime.datetime.min)
+        )
         
-        # Get the most recent message timestamp
-        last_updated = max((msg.timestamp for msg in all_messages), default=datetime.datetime.now())
-        
-        return ChatMessagesResponse(
-            chat_id=chain_id,
-            messages=all_messages,
-            total_messages=len(all_messages),
+        return ChainMessagesResponse(
+            chain_id=chain_id,
+            sessions=session_groups,
+            total_sessions=len(session_groups),
+            total_messages=total_messages,
             last_updated=last_updated,
             chat_mode="BOT",
             is_escalated=chain.status == ChainStatus.ESCALATED
