@@ -302,3 +302,32 @@ async def update_meeting_link(
         )
 
 
+
+@router.get('/user-det/{userid}', tags=["HR"])
+async def get_user(userid: str, hr : dict = Depends(verify_hr)):
+    try:
+        user_det = await Employee.find_one({"employee_id": userid})
+        if not user_det:
+            raise HTTPException(
+                status_code=404,
+                detail=f"User with ID {userid} not found"
+            )
+        
+        if user_det.employee_id != hr["employee_id"]:
+            raise HTTPException(
+                status_code=403,
+                detail="Not authorized to access this user's details"
+            )
+ 
+        
+        # Convert to dict and exclude sensitive information
+        user_dict = user_det.dict(exclude={'password'})
+        return user_dict
+    except HTTPException:
+        raise
+    except Exception as e:
+
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error fetching user details: {str(e)}"
+        )
