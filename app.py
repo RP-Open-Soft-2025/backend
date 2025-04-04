@@ -54,8 +54,8 @@ async def periodic_cleanup():
 
 # Create FastAPI app with lifespan
 app = FastAPI(
-    title="Fantastic App",
-    description="An API for managing students and administrators.",
+    title="Deloitte Chatbot API",
+    description="An API for managing employees and administrators.",
     lifespan=lifespan
 )
 

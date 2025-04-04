@@ -97,7 +97,7 @@ async def admin_login(user_credentials: EmployeeSignIn = Body(...)):
                 "is_first_login": user_exists.is_first_login
             })
 
-    raise HTTPException(status_code=403, detail="Invalid admin/HR credentials")
+    raise HTTPException(status_code=403, detail="Invalid credentials!")
 
 @router.post("/admin/forgot-password")
 async def admin_forgot_password(forgot_password_request: ForgotPasswordRequest = Body(...)):
