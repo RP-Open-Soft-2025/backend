@@ -46,8 +46,19 @@ async def list_assigned_users(hr: dict = Depends(verify_hr)):
         users = []
         for employee in employees:
             latest_vibe = None
-            if employee.company_data.vibemeter:
+            if hasattr(employee, 'company_data') and hasattr(employee.company_data, 'vibemeter') and employee.company_data.vibemeter:
                 latest_vibe = employee.company_data.vibemeter[-1]
+            
+            # Format mood scores with null checks
+            mood_scores = []
+            if hasattr(employee, 'company_data') and hasattr(employee.company_data, 'vibemeter'):
+                for vibe in employee.company_data.vibemeter:
+                    mood_score = {
+                        "timestamp": vibe.Response_Date.isoformat() if hasattr(vibe, 'Response_Date') and vibe.Response_Date else None,
+                        "Vibe_Score": vibe.Vibe_Score if hasattr(vibe, 'Vibe_Score') else None
+                    }
+                    mood_scores.append(mood_score)
+
             user_data = {
                 "userId": employee.employee_id,
                 "name": employee.name,
@@ -55,16 +66,9 @@ async def list_assigned_users(hr: dict = Depends(verify_hr)):
                 "status": "active" if not employee.is_blocked else "blocked",
                 "latestVibe": latest_vibe,
                 "sessionData": {
-                    "moodScores": [
-                        {
-                            "timestamp": vibe.Response_Date.isoformat(),
-                            "Vibe_Score": vibe.Vibe_Score,
-                            # "Emotion_Zone": vibe.Emotion_Zone
-                        }
-                        for vibe in employee.company_data.vibemeter
-                    ]
+                    "moodScores": mood_scores
                 },
-                "lastPing": employee.last_ping.isoformat()
+                "lastPing": employee.last_ping.isoformat() if employee.last_ping else None
             }
             users.append(user_data)
         
