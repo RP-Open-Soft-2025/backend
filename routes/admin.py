@@ -194,10 +194,10 @@ async def create_user(
         manager_id=user_data.manager_id,
         last_ping=datetime.datetime.now()
     )
-    send_new_employee_email(user_data.email, user_data.employee_id, new_password)
     
     try:
         await new_employee.insert()
+        send_new_employee_email(user_data.email, user_data.employee_id, new_password)
         return {
             "message": "User created successfully",
             "employee_id": new_employee.employee_id,
@@ -337,14 +337,14 @@ async def list_hr(admin: dict = Depends(verify_admin)):
         )
 
 @router.get("/list-users", tags=["HR"])
-async def list_users(hr: dict = Depends(verify_hr)):
+async def list_users(hr: Employee = Depends(verify_hr)):
     """
     Get a list of all users with their session data.
     Only Admin / HR personnel can access this endpoint.
     """
     try:
-        if hr["role"] == Role.HR:
-            employees = await Employee.get_employees_by_manager(hr["employee_id"])
+        if hr.role == Role.HR:
+            employees = await Employee.get_employees_by_manager(hr.employee_id)
         else: # Get all employees
             employees = await Employee.find_all()
         
@@ -397,7 +397,7 @@ async def list_users(hr: dict = Depends(verify_hr)):
 @router.post("/block-user", tags=["HR"])
 async def block_user(
     block_data: BlockUserRequest,
-    hr: dict = Depends(verify_hr)
+    hr: Employee = Depends(verify_hr)
 ):
     """
     Block a user from accessing the system.
@@ -411,7 +411,7 @@ async def block_user(
             detail=f"Employee with ID {block_data.employee_id} not found"
         )
     
-    if hr["role"] == Role.HR and employee.manager_id != hr["employee_id"]:
+    if hr.role == Role.HR and employee.manager_id != hr.employee_id:
         raise HTTPException(
             status_code=403,
             detail="You can only block employees assigned to you"
@@ -447,7 +447,7 @@ async def block_user(
 @router.post("/unblock-user", tags=["HR"])
 async def unblock_user(
     block_data: BlockUserRequest,
-    hr: dict = Depends(verify_hr)
+    hr: Employee = Depends(verify_hr)
 ):
     """
     Unblock a user from accessing the system.
@@ -462,7 +462,7 @@ async def unblock_user(
             detail=f"Employee with ID {block_data.employee_id} not found"
         )
 
-    if hr["role"] == Role.HR and employee.manager_id != hr["employee_id"]:
+    if hr.role == Role.HR and employee.manager_id != hr.employee_id:
         raise HTTPException(
             status_code=403,
             detail="You can only unblock employees assigned to you"
@@ -492,7 +492,7 @@ async def unblock_user(
         )
 
 @router.get('/user-det/{userid}', tags=["HR"])
-async def get_user(userid: str, hr: dict = Depends(verify_hr)):
+async def get_user(userid: str, hr: Employee = Depends(verify_hr)):
     """
     Get details of a specific user.
     Only Admin / HR personnel can access this endpoint.
@@ -505,7 +505,7 @@ async def get_user(userid: str, hr: dict = Depends(verify_hr)):
                 detail=f"User with ID {userid} not found"
             )
         
-        if hr["role"] == Role.HR and user_det.manager_id != hr["employee_id"]:
+        if hr.role == Role.HR and user_det.manager_id != hr.employee_id:
             raise HTTPException(
                 status_code=403,
                 detail="Not authorized to access this user"
@@ -529,7 +529,7 @@ class UpdateMeetingLinkRequest(BaseModel):
 @router.patch("/update-meeting-link", tags=["HR"])
 async def update_meeting_link(
     request: UpdateMeetingLinkRequest,
-    hr: dict = Depends(verify_hr)
+    hr: Employee = Depends(verify_hr)
 ):
     """
     Update the HR's meeting link that will be used for virtual meetings.
@@ -554,7 +554,7 @@ async def update_meeting_link(
 async def create_session(
     user_id: str,
     session_data: CreateSessionRequest,
-    hr: dict = Depends(verify_hr)
+    hr: Employee = Depends(verify_hr)
 ):
     """
     Create a new session for an employee.
@@ -569,7 +569,7 @@ async def create_session(
         )
     
     # Verify if the employee is assigned to this HR
-    if hr["role"] == Role.HR and employee.manager_id != hr["employee_id"]:
+    if hr.role == Role.HR and employee.manager_id != hr.employee_id:
         raise HTTPException(status_code=403, detail="Not authorized to create session for this employee")
     
     # check if there is an active or pending session for the employee
@@ -607,7 +607,7 @@ async def create_session(
     }
 
 @router.get("/sessions/pending", response_model=List[SessionResponse], tags=["HR"])
-async def get_all_active_sessions(hr: dict = Depends(verify_hr)):
+async def get_all_active_sessions(hr: Employee = Depends(verify_hr)):
     """
     Get all pending sessions in the system or for a given HR.
     Only Admin / HR personnel can access this endpoint.
@@ -615,8 +615,8 @@ async def get_all_active_sessions(hr: dict = Depends(verify_hr)):
     """
     try:
         # Get all pending sessions for a given HR
-        if hr["role"] == Role.HR:
-            employees = await Employee.get_employees_by_manager(hr["employee_id"])
+        if hr.role == Role.HR:
+            employees = await Employee.get_employees_by_manager(hr.employee_id)
             employee_ids = [emp.employee_id for emp in employees]
             sessions = await Session.find({"user_id": {"$in": employee_ids}, "status": SessionStatus.PENDING}).to_list()
         else: # Get all pending sessions
@@ -642,7 +642,7 @@ async def get_all_active_sessions(hr: dict = Depends(verify_hr)):
         )
     
 @router.get("/sessions/completed", response_model=List[SessionResponse], tags=["HR"])
-async def get_all_active_sessions(hr: dict = Depends(verify_hr)):
+async def get_all_active_sessions(hr: Employee = Depends(verify_hr)):
     """
     Get all completed sessions in the system or for a given HR.
     Only Admin / HR personnel can access this endpoint.
@@ -650,8 +650,8 @@ async def get_all_active_sessions(hr: dict = Depends(verify_hr)):
     """
     try:
         # Get all completed sessions for a given HR
-        if hr["role"] == Role.HR:
-            employees = await Employee.get_employees_by_manager(hr["employee_id"])
+        if hr.role == Role.HR:
+            employees = await Employee.get_employees_by_manager(hr.employee_id)
             employee_ids = [emp.employee_id for emp in employees]
             sessions = await Session.find({"user_id": {"$in": employee_ids}, "status": SessionStatus.COMPLETED}).to_list()
         else: # Get all sessions
@@ -677,7 +677,7 @@ async def get_all_active_sessions(hr: dict = Depends(verify_hr)):
         )
 
 @router.get("/sessions/active", response_model=List[SessionResponse], tags=["HR"])
-async def get_all_active_sessions(hr: dict = Depends(verify_hr)):
+async def get_all_active_sessions(hr: Employee = Depends(verify_hr)):
     """
     Get all active sessions in the system or for a given HR.
     Only Admin / HR personnel can access this endpoint.
@@ -685,8 +685,8 @@ async def get_all_active_sessions(hr: dict = Depends(verify_hr)):
     """
     try:
         # Get all active sessions for a given HR
-        if hr["role"] == Role.HR:
-            employees = await Employee.get_employees_by_manager(hr["employee_id"])
+        if hr.role == Role.HR:
+            employees = await Employee.get_employees_by_manager(hr.employee_id)
             employee_ids = [emp.employee_id for emp in employees]
             sessions = await Session.find({"user_id": {"$in": employee_ids}, "status": SessionStatus.ACTIVE}).to_list()
         else: # Get all active sessions
@@ -712,7 +712,7 @@ async def get_all_active_sessions(hr: dict = Depends(verify_hr)):
         )
 
 @router.get("/sessions", response_model=List[SessionResponse], tags=["HR"])
-async def get_active_and_pending_sessions(hr: dict = Depends(verify_hr)):
+async def get_active_and_pending_sessions(hr: Employee = Depends(verify_hr)):
     """
     Get all active and pending sessions in the system.
     Only Admin / HR personnel can access this endpoint.
@@ -720,8 +720,8 @@ async def get_active_and_pending_sessions(hr: dict = Depends(verify_hr)):
     """
     try:
         # Get all active and pending sessions for a given HR
-        if hr["role"] == Role.HR:
-            employees = await Employee.get_employees_by_manager(hr["employee_id"])
+        if hr.role == Role.HR:
+            employees = await Employee.get_employees_by_manager(hr.employee_id)
             employee_ids = [emp.employee_id for emp in employees]
             sessions = await Session.find(
                 {"user_id": {"$in": employee_ids}, "status": {"$in": [SessionStatus.ACTIVE, SessionStatus.PENDING]}}
@@ -757,7 +757,7 @@ class SessionStatusUpdate(BaseModel):
 @router.patch("/session/complete", tags=["HR"])
 async def complete_session(
     session_data: SessionStatusUpdate,
-    hr: dict = Depends(verify_hr)
+    hr: Employee = Depends(verify_hr)
 ):
     """
     Mark a session as completed.
@@ -779,7 +779,7 @@ async def complete_session(
             detail=f"Employee with ID {session.user_id} not found"
         )
 
-    if hr["role"] == Role.HR and employee.manager_id != hr["employee_id"]:
+    if hr.role == Role.HR and employee.manager_id != hr.employee_id:
         raise HTTPException(
             status_code=403,
             detail="You can only complete sessions for employees assigned to you"
@@ -820,7 +820,7 @@ async def complete_session(
 @router.patch("/session/activate", tags=["HR"])
 async def activate_session(
     session_data: SessionStatusUpdate,
-    hr: dict = Depends(verify_hr)
+    hr: Employee = Depends(verify_hr)
 ):
     """
     Mark a session as active.
@@ -843,7 +843,7 @@ async def activate_session(
             detail=f"Employee with ID {session.user_id} not found"
         )
     
-    if hr["role"] == Role.HR and employee.manager_id != hr["employee_id"]:
+    if hr.role == Role.HR and employee.manager_id != hr.employee_id:
         raise HTTPException(
             status_code=403,
             detail="You can only activate sessions for employees assigned to you"
@@ -879,15 +879,15 @@ async def activate_session(
         )
 
 @router.get("/meets" , tags=["HR"])
-async def get_meets(hr: dict = Depends(verify_hr)):
+async def get_meets(hr: Employee = Depends(verify_hr)):
     """
     Get a list of all meets with their details.
     Only Admin / HR personnel can access this endpoint.
     """
     try:
         # Get all meets for a given HR
-        if hr["role"] == Role.HR:
-            meets = await Meet.get_meets_with_user(hr["employee_id"])
+        if hr.role == Role.HR:
+            meets = await Meet.get_meets_with_user(hr.employee_id)
         else: # Get all meets
             meets = await Meet.find_all().to_list()
 
@@ -915,15 +915,15 @@ async def get_meets(hr: dict = Depends(verify_hr)):
         )
 
 @router.get("/chains", response_model=List[ChainResponse], tags=["HR"])
-async def get_all_chains(hr: dict = Depends(verify_hr)):
+async def get_all_chains(hr: Employee = Depends(verify_hr)):
     """
     Get all chains in the system.
     Only Admin / HR personnel can access this endpoint.
     Returns a list of all chains of all employees under the HR.
     """
     try:
-        if hr["role"] == Role.HR:
-            employees = await Employee.get_employees_by_manager(hr["employee_id"])
+        if hr.role == Role.HR:
+            employees = await Employee.get_employees_by_manager(hr.employee_id)
             employee_ids = [emp.employee_id for emp in employees]
             chains = await Chain.find({"employee_id": {"$in": employee_ids}}).to_list()
         else:
@@ -937,7 +937,7 @@ async def get_all_chains(hr: dict = Depends(verify_hr)):
         )
 
 @router.get("/chains/{chain_id}", response_model=ChainResponse, tags=["HR"])
-async def get_chain_details(chain_id: str, hr: dict = Depends(verify_hr)):
+async def get_chain_details(chain_id: str, hr: Employee = Depends(verify_hr)):
     """
     Get details of a specific chain.
     Only Admin / HR personnel can access this endpoint.
@@ -957,7 +957,7 @@ async def get_chain_details(chain_id: str, hr: dict = Depends(verify_hr)):
                 detail=f"Employee with ID {chain.employee_id} not found"
             )
 
-        if hr["role"] == Role.HR and employee.manager_id != hr["employee_id"]:
+        if hr.role == Role.HR and employee.manager_id != hr.employee_id:
             raise HTTPException(
                 status_code=403,
                 detail="You can only access chains for employees assigned to you"
@@ -971,7 +971,7 @@ async def get_chain_details(chain_id: str, hr: dict = Depends(verify_hr)):
         )
 
 @router.get("/chains/employee/{employee_id}", response_model=List[ChainResponse], tags=["HR"])
-async def get_employee_chains(employee_id: str, hr: dict = Depends(verify_hr)):
+async def get_employee_chains(employee_id: str, hr: Employee = Depends(verify_hr)):
     """
     Get all chains for a specific employee.
     Only Admin / HR personnel can access this endpoint.
@@ -984,7 +984,7 @@ async def get_employee_chains(employee_id: str, hr: dict = Depends(verify_hr)):
                 detail=f"Employee with ID {employee_id} not found"
             )
         
-        if hr["role"] == Role.HR and employee.manager_id != hr["employee_id"]:
+        if hr.role == Role.HR and employee.manager_id != hr.employee_id:
             raise HTTPException(
                 status_code=403,
                 detail="You can only access chains for employees assigned to you"
@@ -1000,7 +1000,7 @@ async def get_employee_chains(employee_id: str, hr: dict = Depends(verify_hr)):
         )
 
 @router.post("/chains/{chain_id}/complete", tags=["HR"])
-async def complete_chain(chain_id: str, hr: dict = Depends(verify_hr)):
+async def complete_chain(chain_id: str, hr: Employee = Depends(verify_hr)):
     """
     Mark a chain as completed.
     Only Admin / HR personnel can access this endpoint.
@@ -1020,7 +1020,7 @@ async def complete_chain(chain_id: str, hr: dict = Depends(verify_hr)):
                 detail=f"Employee with ID {chain.employee_id} not found"
             )
         
-        if hr["role"] == Role.HR and employee.manager_id != hr["employee_id"]:
+        if hr.role == Role.HR and employee.manager_id != hr.employee_id:
             raise HTTPException(
                 status_code=403,
                 detail="You can only complete chains for employees assigned to you"
@@ -1041,7 +1041,7 @@ async def complete_chain(chain_id: str, hr: dict = Depends(verify_hr)):
         )
 
 @router.post("/chains/{chain_id}/escalate", tags=["HR"])
-async def escalate_chain(chain_id: str, hr: dict = Depends(verify_hr)):
+async def escalate_chain(chain_id: str, hr: Employee = Depends(verify_hr)):
     """
     Mark a chain as escalated to HR.
     Only Admin / HR personnel can access this endpoint.
@@ -1061,7 +1061,7 @@ async def escalate_chain(chain_id: str, hr: dict = Depends(verify_hr)):
                 detail=f"Employee with ID {chain.employee_id} not found"
             )
         
-        if hr["role"] == Role.HR and employee.manager_id != hr["employee_id"]:
+        if hr.role == Role.HR and employee.manager_id != hr.employee_id:
             raise HTTPException(
                 status_code=403,
                 detail="You can only escalate chains for employees assigned to you"
@@ -1082,7 +1082,7 @@ async def escalate_chain(chain_id: str, hr: dict = Depends(verify_hr)):
         )
 
 @router.post("/chains/{chain_id}/cancel", tags=["HR"])
-async def cancel_chain(chain_id: str, hr: dict = Depends(verify_hr)):
+async def cancel_chain(chain_id: str, hr: Employee = Depends(verify_hr)):
     """
     Cancel a chain.
     Only Admin / HR personnel can access this endpoint.
@@ -1102,7 +1102,7 @@ async def cancel_chain(chain_id: str, hr: dict = Depends(verify_hr)):
                 detail=f"Employee with ID {chain.employee_id} not found"
             )
         
-        if hr["role"] == Role.HR and employee.manager_id != hr["employee_id"]:
+        if hr.role == Role.HR and employee.manager_id != hr.employee_id:
             raise HTTPException(
                 status_code=403,
                 detail="You can only cancel chains for employees assigned to you"
@@ -1125,7 +1125,7 @@ async def cancel_chain(chain_id: str, hr: dict = Depends(verify_hr)):
 @router.post("/chains/create", response_model=ChainResponse, tags=["HR"])
 async def create_chain(
     request: CreateChainRequest,
-    hr: dict = Depends(verify_hr)
+    hr: Employee = Depends(verify_hr)
 ):
     """
     Create a new chain for an employee and schedule their first session.
@@ -1140,7 +1140,7 @@ async def create_chain(
                 detail=f"Employee with ID {request.employee_id} not found"
             )
         
-        if hr["role"] == Role.HR and employee.manager_id != hr["employee_id"]:
+        if hr.role == Role.HR and employee.manager_id != hr.employee_id:
             raise HTTPException(
                 status_code=403,
                 detail="You can only create chains for employees assigned to you"
@@ -1203,7 +1203,7 @@ async def create_chain(
 @router.post("/notification/create", response_model=NotificationResponse, tags=["HR"])
 async def create_notification(
     notification: NotificationCreate,
-    hr: dict = Depends(verify_hr)
+    hr: Employee = Depends(verify_hr)
 ):
     """
     Create a new notification for an employee 
@@ -1217,7 +1217,7 @@ async def create_notification(
             detail="Employee not found"
         )
     
-    if hr["role"] == Role.HR and employee.manager_id != hr["employee_id"]:
+    if hr.role == Role.HR and employee.manager_id != hr.employee_id:
         raise HTTPException(
             status_code=403,
             detail="You can only create notifications for employees assigned to you"
