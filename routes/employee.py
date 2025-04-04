@@ -704,21 +704,29 @@ async def get_chain_messages(
             # Get chat for this session
             chat = await Chat.find_one({"chat_id": session.chat_id})
             if chat and chat.messages:
-                # Convert messages to ChatMessage model
-                messages = [
-                    ChatMessage(
+                # Convert messages to ChatMessage model and ensure timestamps are timezone-aware
+                messages = []
+                for msg in chat.messages:
+                    # Ensure timestamp is timezone-aware
+                    msg_timestamp = msg.timestamp
+                    if msg_timestamp and msg_timestamp.tzinfo is None:
+                        msg_timestamp = msg_timestamp.replace(tzinfo=datetime.UTC)
+                    
+                    messages.append(ChatMessage(
                         sender=msg.sender_type.value,
                         text=msg.text,
-                        timestamp=msg.timestamp
-                    ) for msg in chat.messages
-                ]
+                        timestamp=msg_timestamp
+                    ))
                 
                 # Sort messages by timestamp
                 messages.sort(key=lambda x: x.timestamp)
                 
                 # Update last_updated if this chat has more recent messages
                 if messages:
-                    latest_msg_time = max(msg.timestamp for msg in messages)
+                    latest_msg_time = max(
+                        (msg.timestamp for msg in messages if msg.timestamp is not None),
+                        default=datetime.datetime.min.replace(tzinfo=datetime.UTC)
+                    )
                     if latest_msg_time > last_updated:
                         last_updated = latest_msg_time
                 
@@ -734,7 +742,10 @@ async def get_chain_messages(
         
         # Sort session groups by their first message timestamp
         session_groups.sort(
-            key=lambda x: min((msg.timestamp for msg in x.messages), default=datetime.datetime.min)
+            key=lambda x: min(
+                (msg.timestamp for msg in x.messages if msg.timestamp is not None),
+                default=datetime.datetime.min.replace(tzinfo=datetime.UTC)
+            )
         )
         
         return ChainMessagesResponse(
@@ -747,6 +758,7 @@ async def get_chain_messages(
             is_escalated=chain.status == ChainStatus.ESCALATED
         )
     except Exception as e:
+        print(f"Chain messages error: {str(e)}")  # Add logging
         raise HTTPException(
             status_code=500,
             detail=f"Error retrieving chain messages: {str(e)}"
