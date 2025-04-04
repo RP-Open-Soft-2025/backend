@@ -231,14 +231,14 @@ class Employee(Document):
             raise ValueError("Employee ID must be in the format EMP followed by 4 digits")
         return v
     
-    @field_validator("meeting_link")
-    @classmethod
-    def validate_meeting_link(cls, v, values):
-        if "role" in values and values["role"] == Role.HR and not v:
-            return ""  # Initialize empty string for HR
-        elif "role" in values and values["role"] != Role.HR:
-            return ""  # Non-HR users don't need a meeting link
-        return v
+    # @field_validator("meeting_link")
+    # @classmethod
+    # def validate_meeting_link(cls, v, values):
+    #     if "role" in values and values["role"] == Role.HR and not v:
+    #         return ""  # Initialize empty string for HR
+    #     elif "role" in values and values["role"] != Role.HR:
+    #         return ""  # Non-HR users don't need a meeting link
+    #     return v
     
     class Settings:
         name = "employees"
@@ -288,4 +288,4 @@ class Employee(Document):
     
     @classmethod
     async def find_all(cls):
-        return await cls.find({}).to_list()
+        return await cls.find().to_list()
