@@ -14,7 +14,7 @@ import datetime
 from collections import defaultdict
 from models.notification import Notification, NotificationStatus
 from bson import ObjectId
-
+import requests
 
 router = APIRouter()
 
@@ -132,18 +132,14 @@ class ChainMessagesResponse(BaseModel):
     chat_mode: str
     is_escalated: bool = False
 
-async def verify_if_user(token: str = Depends(JWTBearer())):
-    """Verify that the user is an employee."""
-    payload = decode_jwt(token)
-    if not payload:
-        raise HTTPException(
-            status_code=403,
-            detail="Only authenticated user can access this route"
-        )
-    return payload
+
+class EndSessionRequest(BaseModel):
+    chat_id: str = Field(..., description="ID of the current chat")
+    chain_id: str = Field(..., description="ID of the chain")
+
 @router.get("/profile", response_model=UserDetails, tags=["Employee"])
 async def get_user_profile(
-    employee: dict = Depends(verify_if_user)
+    employee: dict = Depends(verify_employee)
 ):
     """
     Get detailed information about the current user including:
@@ -762,4 +758,109 @@ async def get_chain_messages(
         raise HTTPException(
             status_code=500,
             detail=f"Error retrieving chain messages: {str(e)}"
+        )
+
+@router.post("/end-session", tags=["LLM"])
+async def end_session(
+    request: EndSessionRequest,
+    employee: dict = Depends(verify_employee)
+):
+    """
+    End the current session, update chain context, and create a new session.
+    """
+    try:
+        # Get current chat
+        chat = await Chat.get_chat_by_id(request.chat_id)
+        if not chat:
+            raise HTTPException(status_code=404, detail="Chat not found")
+        
+        # Verify employee owns this chat
+        if chat.user_id != employee["employee_id"]:
+            raise HTTPException(status_code=403, detail="Not authorized to access this chat")
+        
+        # Get current session
+        session = await Session.find_one({"chat_id": chat.chat_id})
+        if not session:
+            raise HTTPException(status_code=404, detail="Associated session not found")
+        
+        # Get associated chain
+        chain = await Chain.get_by_id(request.chain_id)
+        if not chain:
+            raise HTTPException(status_code=404, detail="Chain not found")
+        
+        # Verify session belongs to chain
+        if session.session_id not in chain.session_ids:
+            raise HTTPException(status_code=400, detail="Session does not belong to this chain")
+        
+        # Complete current session
+        session.status = SessionStatus.COMPLETED
+        session.completed_at = datetime.now(timezone.utc)
+        await session.save()
+        
+        # Get all messages from current session
+        current_session_messages = [
+            {
+                "sender": msg.sender.value,
+                "text": msg.text,
+                "timestamp": msg.timestamp.isoformat()
+            }
+            for msg in chat.messages
+        ]
+        
+        # Prepare data for LLM backend
+        data = {
+            "chain_id": chain.chain_id,
+            "session_id": session.session_id,
+            "current_context": chain.context,
+            "current_session_messages": current_session_messages
+        }
+        
+        # Call LLM backend to end session and get updated context
+        response = requests.post(f"{llm_add}/end_session", json=data)
+        response_data = response.json()
+        
+        # Update chain context with response from LLM
+        updated_context = response_data.get("updated_context")
+        if updated_context:
+            await chain.update_context(updated_context)
+        
+        # Create new session for tomorrow
+        tomorrow = datetime.now(timezone.utc) + timedelta(days=1)
+        scheduled_time = tomorrow.replace(hour=10, minute=0, second=0, microsecond=0)
+        
+        # Create new chat for next session
+        new_chat = Chat(user_id=employee["employee_id"])
+        await new_chat.save()
+        
+        # Create new session
+        new_session = Session(
+            user_id=employee["employee_id"],
+            chat_id=new_chat.chat_id,
+            scheduled_at=scheduled_time,
+            notes=f"Follow-up session for chain {chain.chain_id}"
+        )
+        await new_session.save()
+        
+        # Add new session to chain
+        await chain.add_session(new_session.session_id)
+        
+        # Create notification for the employee
+        notification = Notification(
+            employee_id=employee["employee_id"],
+            title="Next Support Session Scheduled",
+            description=f"Your next support session has been scheduled for {scheduled_time.strftime('%Y-%m-%d %H:%M')} UTC."
+        )
+        await notification.save()
+        
+        return {
+            "message": "Session ended successfully",
+            "new_session_id": new_session.session_id,
+            "scheduled_time": scheduled_time,
+            "updated_context": updated_context
+        }
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error ending session: {str(e)}"
         )
