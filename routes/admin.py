@@ -110,6 +110,53 @@ async def verify_hr(token: str = Depends(JWTBearer())):
     
     return hr_user
 
+# add an endpoint that returns, just the number of total employees, active employees, total admins, totals hrs, total employees, total sessions, completed sessions, active sessions, pendign sessions, total meetings
+@router.get("/stats", tags=["Admin"])
+async def get_system_stats(admin: dict = Depends(verify_admin)):
+    """
+    Get system-wide statistics including counts of employees, sessions, and meetings.
+    Only administrators can access this endpoint.
+    """
+    try:
+        # Employee stats
+
+        total_employees = len(await Employee.find().to_list())
+        active_employees = len(await Employee.find({"is_active": True}).to_list())
+        total_admins = len(await Employee.find({"role": Role.ADMIN}).to_list())
+        total_hrs = len(await Employee.find({"role": Role.HR}).to_list())
+
+        # Session stats
+        total_sessions = len(await Session.find().to_list())
+        completed_sessions = len(await Session.find({"status": SessionStatus.COMPLETED}).to_list())
+        active_sessions = len(await Session.find({"status": SessionStatus.ACTIVE}).to_list())
+        pending_sessions = len(await Session.find({"status": SessionStatus.PENDING}).to_list())
+
+        # Meeting stats
+        total_meetings = len(await Meet.find().to_list())
+
+        return {
+            "employee_stats": {
+                "total_employees": total_employees,
+                "active_employees": active_employees,
+                "total_admins": total_admins,
+                "total_hrs": total_hrs
+            },
+            "session_stats": {
+                "total_sessions": total_sessions,
+                "completed_sessions": completed_sessions,
+                "active_sessions": active_sessions,
+                "pending_sessions": pending_sessions
+            },
+            "meeting_stats": {
+                "total_meetings": total_meetings
+            }
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error fetching system statistics: {str(e)}"
+        )
+
 @router.get("/missing/{role}", tags=["Admin"])
 async def get_missing_users(role: Role, admin: dict = Depends(verify_admin)):
     """
