@@ -7,7 +7,8 @@ from pydantic import BaseModel, Field
 import uuid
 from models.chat import Chat
 from models.session import Session
-from models.session import SessionStatus
+from models.employee import Employee
+from utils.utils import send_escalation_mail
 
 class ChainStatus(str, Enum):
     ACTIVE = "active"    # Chain is ongoing
@@ -109,6 +110,43 @@ class Chain(Document):
                 await chat.save()
 
         self.updated_at = datetime.now(timezone.utc)
+        
+    # get the employee details
+        user = await Employee.find_one({"employee_id": self.employee_id})
+
+    # send an email to the employee
+        await send_escalation_mail(to_email=user.email, sub=f"""
+Dear {user.name},
+
+We have detected a need for HR intervention in your chain. Please contact your HR representative for further assistance.
+
+Session Details:
+- Date: {self.escalated_at.strftime('%Y-%m-%d')}
+- Time: {self.escalated_at.strftime('%H:%M')} timezone.utc
+- Deadline: {(self.escalated_at + timedelta(days=2)).strftime('%Y-%m-%d')}
+- Chain ID: {self.chain_id}
+
+Best regards,
+HR Team
+""")
+    
+    # send an email to the HR
+        await send_escalation_mail(to_email=user.email, sub=f"""
+Dear HR,
+
+We have detected a need for HR intervention in the chain. Please contact the employee for further assistance.
+
+Session Details:
+    - Date: {self.escalated_at.strftime('%Y-%m-%d')}
+    - Time: {self.escalated_at.strftime('%H:%M')} timezone.utc
+    - Deadline: {(self.escalated_at + timedelta(days=2)).strftime('%Y-%m-%d')}
+    - Chain ID: {self.chain_id}
+    - Employee ID: {self.employee_id}
+    - Employee Name: {user.name}
+    - Employee Email: {user.email}
+Best regards,
+HR Team
+""")
         await self.save()
 
     async def cancel_chain(self):

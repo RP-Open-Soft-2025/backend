@@ -13,7 +13,7 @@ from routes.admin import verify_hr
 from routes.employee import ChatSummary, EmployeeChatsResponse 
 from models import Employee, Notification
 from models.employee import Role
-from utils.utils import send_new_session_email
+from utils.utils import send_new_session_email, send_escalation_mail
 
 router = APIRouter()
 llm_add = Settings().LLM_ADDR
