@@ -9,6 +9,7 @@ from scipy import stats
 import json
 
 def select_employees(json_data):
+    
     def extract_employee_features(employee_json_data):
 
         processed_data = []
@@ -19,38 +20,58 @@ def select_employees(json_data):
                 print(f"Warning: Invalid or missing employee_id, skipping record -> {employee}")
                 continue  # Skip if employee_id is missing or invalid
 
-            # Extract `company_data` (should be a dictionary)
             company_data = employee.get('company_data', {})
             if not isinstance(company_data, dict):
                 print(f"Warning: `company_data` should be a dictionary, skipping record for {employee_id}.")
                 continue  # Skip this entry
 
-            # Initialize feature dictionary
             features = {'employee_id': employee_id}
 
-            # Process leave data
-            leave_days = sum(leave.get('Leave_Days', 0) for leave in company_data.get('leave', []) if isinstance(leave, dict))
-            features['total_leave_days'] = leave_days
+            def parse_date(date_str):
+                if "H2" in date_str or "H1" in date_str:
+                    # Handling half-year formats like 'H2 2023'
+                    return pd.to_datetime(date_str.replace("H2", "12").replace("H1", "06"), format="%m %Y", errors="coerce")
+                return pd.to_datetime(date_str, errors="coerce")
 
-            # Process performance data
-            performance_ratings = [p.get('Performance_Rating', 0) for p in company_data.get('performance', []) if isinstance(p, dict)]
-            features['average_performance_rating'] = np.mean(performance_ratings) if performance_ratings else 0
-            features['performance_review_count'] = len(performance_ratings)
+            def calculate_ema(data, date_key, value_key):
+                if not data:
+                    return 0
+                sorted_data = sorted(data, key=lambda x: parse_date(x.get(date_key, '')))
+                ema_value = 0
+                alpha = 0.1  # smoothing factor for EMA
+                for i, entry in enumerate(sorted_data):
+                    value = entry.get(value_key, 0)
+                    date_value = parse_date(entry.get(date_key, ''))
+                    if pd.isna(date_value):
+                        continue
+                    if i == 0:
+                        ema_value = value
+                    else:
+                        time_diff = (date_value - parse_date(sorted_data[i - 1].get(date_key, ''))).days / 30.0
+                        dynamic_alpha = alpha / (1 + time_diff)
+                        ema_value = dynamic_alpha * value + (1 - dynamic_alpha) * ema_value
+                return ema_value
 
-            # Process rewards data
-            rewards = company_data.get('rewards', [])
-            total_reward_points = sum(reward.get('Reward_Points', 0) for reward in rewards if isinstance(reward, dict))
-            features['total_reward_points'] = total_reward_points
+            leave_data = company_data.get('leave', [])
+            features['total_leave_days'] = calculate_ema(leave_data, 'Leave_End_Date', 'Leave_Days')
 
-            # Process vibe scores
-            vibe_scores = [vibe.get('Vibe_Score', 0) for vibe in company_data.get('vibemeter', []) if isinstance(vibe, dict)]
-            features['average_vibe_score'] = np.mean(vibe_scores) if vibe_scores else 0
-            features['vibe_response_count'] = len(vibe_scores)
+            activity_data = company_data.get('activity', [])
+            features['average_teams_messages_sent'] = calculate_ema(activity_data, 'Date', 'Teams_Messages_Sent')
+            features['average_emails_sent'] = calculate_ema(activity_data, 'Date', 'Emails_Sent')
+            features['average_work_hours'] = calculate_ema(activity_data, 'Date', 'Work_Hours')
+            features['total_meetings_attended'] = calculate_ema(activity_data, 'Date', 'Meetings_Attended')
 
-            # Append extracted features to processed data list
+            performance_data = company_data.get('performance', [])
+            features['average_performance_rating'] = calculate_ema(performance_data, 'Review_Period', 'Performance_Rating')
+
+            rewards_data = company_data.get('rewards', [])
+            features['total_reward_points'] = calculate_ema(rewards_data, 'Award_Date', 'Reward_Points')
+
+            vibemeter_data = company_data.get('vibemeter', [])
+            features['average_vibe_score'] = calculate_ema(vibemeter_data, 'Response_Date', 'Vibe_Score')
+
             processed_data.append(features)
 
-        # Convert processed data into a DataFrame
         return pd.DataFrame(processed_data)
 
 
