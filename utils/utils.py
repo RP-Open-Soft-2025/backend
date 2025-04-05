@@ -29,8 +29,6 @@ Deloitte"""
     msg["Subject"] = subject
     msg.attach(MIMEText(body, "plain"))
 
-    print("this occured", msg.as_string())
-
     try:
         logging.info("Connecting to SMTP server...")
         server = smtplib.SMTP("smtp.gmail.com", 587)
@@ -47,7 +45,7 @@ Deloitte"""
         logging.error(f"Error sending email: {e}")
         raise HTTPException(status_code=500, detail="Failed to send email")
     
-def send_new_session_email(to_email: str, sub: str):
+async def send_new_session_email(to_email: str, sub: str):
     sender_email = Settings().sender_email
     sender_password = Settings().sender_password
     subject = "Counseling Session Scheduled"
@@ -75,7 +73,7 @@ def send_new_session_email(to_email: str, sub: str):
         logging.error(f"Error sending email: {e}")
         raise HTTPException(status_code=500, detail="Failed to send email")
     
-def send_new_employee_email(to_email: str, user:str , password:str):
+async def send_new_employee_email(to_email: str, user:str , password:str):
     sender_email = Settings().sender_email
     sender_password = Settings().sender_password
     subject = "Your Account Credentials"
@@ -120,7 +118,7 @@ Deloitte"""
 
 
 # def create a mail sender for it the deadline of a session +1 day is over
-def send_deadline_reminder_email(to_email: str):
+async def send_deadline_reminder_email(to_email: str):
     sender_email = Settings().sender_email
     sender_password = Settings().sender_password
     subject = "Session Deadline Reminder"
@@ -153,7 +151,7 @@ Deloitte"""
         logging.error(f"Error sending email: {e}")
         raise HTTPException(status_code=500, detail="Failed to send email")
 
-def send_deadline_over_email(to_email: str):
+async def send_deadline_over_email(to_email: str):
     sender_email = Settings().sender_email
     sender_password = Settings().sender_password
     subject = "Session Deadline Over"
