@@ -154,7 +154,7 @@ async def send_message(
             "message": request.message
         }
         headers = {'Content-Type': 'application/json'}
-        response = requests.post(f"{llm_add}/message", json=data, headers=headers)
+        response = requests.post(f"{llm_add}/chatbot/message", json=data, headers=headers)
         response_data = response.json()
         bot_response = response_data["message"]
             
@@ -211,13 +211,13 @@ async def initiate_chat(request: ChatStatusRequest, current_user: dict = Depends
             "context": chain.context  # Send context only during initiation
         }
         print('try sending llm backend a request')
-        response = requests.post(f"{llm_add}/start_session", json=data)
-        print('response from llm backend recieved', response)
+        response = requests.post(f"{llm_add}/chatbot/start_session", json=data)
+        print('response from llm backend received', response)
         response_data = response.json()
         bot_response = response_data["message"]
             
     except Exception as e:
-        print('exception occured ram', e)
+        print('exception occurred ram', e)
         raise HTTPException(500, detail=str(e))
         
     await chat.add_message(SenderType.BOT, bot_response)

@@ -16,7 +16,13 @@ from models.notification import Notification, NotificationStatus
 import random
 from utils.utils import send_new_employee_email
 import logging
+from config.config import Settings
+
+
+import requests
+
 router = APIRouter()
+llm_add = Settings().LLM_ADDR
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 logger = logging.getLogger(__name__)
 
@@ -1173,6 +1179,10 @@ async def create_chain(
     Create a new chain for an employee and schedule their first session.
     Only Admin / HR personnel can access this endpoint.
     """
+    chain = ""
+    session = ""
+    chat = ""
+    notification = ""
     try:
         # Verify the employee exists
         employee = await Employee.get_by_id(request.employee_id)
@@ -1233,10 +1243,41 @@ async def create_chain(
             description=f"A new support session has been scheduled for you on {request.scheduled_time.strftime('%Y-%m-%d %H:%M')} UTC."
         )
         await notification.save()
+
+        report_data = {
+            "employee_data": {
+                "employee_id": employee.employee_id,
+                "company_data": employee.company_data.model_dump(mode='json')
+            }
+        }
+
+        # call the api, LLM_ADDR/report/analyze
+        response = requests.post(f"{llm_add}/report/analyze", json=report_data)
+        if response.status_code != 200:
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to generate employee report"
+            )
         
+        report = response.json()
+        print(report)
+
         return chain
         
     except Exception as e:
+        # delete the chain if it is created
+        if chain:
+            await chain.delete()
+        # delete the session if it is created
+        if session:
+            await session.delete()
+        # delete the chat if it is created
+        if chat:
+            await chat.delete()
+        # delete the notification if it is created
+        if notification:
+            await notification.delete()
+        
         raise HTTPException(
             status_code=500,
             detail=f"Error creating chain: {str(e)}"
