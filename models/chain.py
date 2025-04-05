@@ -4,6 +4,8 @@ from enum import Enum
 from beanie import Document
 from pydantic import BaseModel, Field
 import uuid
+from models.chat import Chat
+from models.session import Session
 
 class ChainStatus(str, Enum):
     ACTIVE = "active"    # Chain is ongoing
@@ -90,6 +92,14 @@ class Chain(Document):
             raise ValueError("Only active chains can be escalated")
         self.status = ChainStatus.ESCALATED
         self.escalated_at = datetime.datetime.now(datetime.UTC)
+        # update all the chats in this chain to be escalated
+        sessions = await Session.find({"session_id": {"$in": self.session_ids}}).to_list()
+        for session in sessions:
+            chat = await Chat.get_by_id(session.chat_id)
+            if chat:
+                chat.is_escalated = True
+                await chat.save()
+
         self.updated_at = datetime.datetime.now(datetime.UTC)
         await self.save()
 

@@ -322,10 +322,23 @@ async def list_hr(admin: dict = Depends(verify_admin)):
             # Count assigned users
             assigned_users = await Employee.get_employees_by_manager(hr.employee_id)
             
+            total_vibe_score = 0
+            valid_employees = 0
+            for user in assigned_users:
+                if (hasattr(user, 'company_data') and 
+                    user.company_data and 
+                    hasattr(user.company_data, 'vibemeter') and 
+                    user.company_data.vibemeter and 
+                    len(user.company_data.vibemeter) > 0):
+                    total_vibe_score += user.company_data.vibemeter[-1].Vibe_Score
+                    valid_employees += 1
+            avg_vibe_score_for_employees = total_vibe_score / valid_employees if valid_employees > 0 else 0
+            
             hr_data = {
                 "hrId": hr.employee_id,
                 "name": hr.name,
-                "currentAssignedUsers": assigned_users
+                "currentAssignedUsersCount": len(assigned_users),
+                "avgVibeScore": avg_vibe_score_for_employees
             }
             hrs.append(hr_data)
         
@@ -352,11 +365,6 @@ async def list_users(hr: Employee = Depends(verify_hr)):
         users = []
         for employee in employees:
             try:
-                # Get the latest vibe meter entry for session data
-                latest_vibe = None
-                if hasattr(employee, 'company_data') and employee.company_data and hasattr(employee.company_data, 'vibemeter') and employee.company_data.vibemeter:
-                    latest_vibe = employee.company_data.vibemeter[-1]
-                
                 # Create user data with proper error handling
                 user_data = {
                     "userId": getattr(employee, 'employee_id', ''),
@@ -364,23 +372,10 @@ async def list_users(hr: Employee = Depends(verify_hr)):
                     "email": getattr(employee, 'email', ''),
                     "role": getattr(employee, 'role', ''),
                     "status": "active" if not getattr(employee, 'is_blocked', False) else "blocked",
-                    "sessionData": {
-                        "latestVibe": latest_vibe,
-                        "moodScores": [
-                            {
-                                "timestamp": vibe.Response_Date.isoformat() if vibe.Response_Date else None,
-                                "Vibe_Score": vibe.Vibe_Score,
-                                # "Emotion_Zone": vibe.Emotion_Zone
-                            }
-                            for vibe in (employee.company_data.vibemeter if hasattr(employee, 'company_data') and employee.company_data and hasattr(employee.company_data, 'vibemeter') else [])
-                        ]
-                    },
                     "lastPing": employee.last_ping.isoformat() 
-
                 }
                 users.append(user_data)
             except Exception as e:
-
                 print(f"Error processing employee {getattr(employee, 'employee_id', 'unknown')}: {str(e)}")
                 continue
         

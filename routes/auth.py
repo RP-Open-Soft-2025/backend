@@ -11,7 +11,7 @@ from config.config import Settings
 from fastapi.responses import JSONResponse
 from jose import JWTError, jwt, ExpiredSignatureError
 from fastapi import Depends
-from datetime import datetime, timedelta, UTC
+from datetime import datetime, timedelta, timezone
 
 secret_key = Settings().secret_key
 email_template = Settings().email_template
@@ -102,7 +102,7 @@ async def admin_login(user_credentials: EmployeeSignIn = Body(...)):
 @router.post("/admin/forgot-password")
 async def admin_forgot_password(forgot_password_request: ForgotPasswordRequest = Body(...)):
     email = forgot_password_request.email.lower()
-    current_time = datetime.now(UTC)
+    current_time = datetime.now(timezone.utc)
     
     # Check if user exists and is admin or HR
     user_exists = await Employee.find_one({
@@ -136,9 +136,9 @@ async def validate_admin_reset_token(reset_token: str):
     timestamp = token_data.timestamp
     # Make sure timestamp is timezone-aware
     if timestamp.tzinfo is None:
-        timestamp = timestamp.replace(tzinfo=UTC)
+        timestamp = timestamp.replace(tzinfo=timezone.utc)
     
-    current_time = datetime.now(UTC)
+    current_time = datetime.now(timezone.utc)
     if current_time - timestamp > timedelta(minutes=5):
         await ResetToken.delete_token(reset_token)
         raise HTTPException(status_code=410, detail="Admin/HR reset link has expired")
@@ -158,7 +158,7 @@ async def admin_reset_password(reset_token: str, request_data: ResetPasswordRequ
     timestamp = token_data.timestamp
     # Make sure timestamp is timezone-aware
     if timestamp.tzinfo is None:
-        timestamp = timestamp.replace(tzinfo=UTC)
+        timestamp = timestamp.replace(tzinfo=timezone.utc)
     
     is_first_login = token_data.is_first_login
     
@@ -172,7 +172,7 @@ async def admin_reset_password(reset_token: str, request_data: ResetPasswordRequ
     if hash_helper.verify(request_data.new_password, user.password):
         raise HTTPException(status_code=400, detail="New password cannot be the same as the old password.")
     
-    current_time = datetime.now(UTC)
+    current_time = datetime.now(timezone.utc)
     if current_time - timestamp > timedelta(minutes=5):
         await ResetToken.delete_token(reset_token)
         raise HTTPException(status_code=410, detail="Reset link has expired")
@@ -231,7 +231,7 @@ async def refresh_access_token(request: Request):
 @router.post("/forgot-password")
 async def forgot_password(forgot_password_request: ForgotPasswordRequest = Body(...)):
     email = forgot_password_request.email.lower()
-    current_time = datetime.now(UTC)
+    current_time = datetime.now(timezone.utc)
     
     # Check for recent reset requests using the database
     if await ResetToken.has_recent_request(email):
@@ -259,9 +259,9 @@ async def validate_reset_token(reset_token: str):
     timestamp = token_data.timestamp
     # Make sure timestamp is timezone-aware
     if timestamp.tzinfo is None:
-        timestamp = timestamp.replace(tzinfo=UTC)
+        timestamp = timestamp.replace(tzinfo=timezone.utc)
     
-    current_time = datetime.now(UTC)
+    current_time = datetime.now(timezone.utc)
     if current_time - timestamp > timedelta(minutes=5):
         await ResetToken.delete_token(reset_token)
         raise HTTPException(status_code=410, detail="Reset link has expired")
@@ -278,7 +278,7 @@ async def reset_password(reset_token: str, request_data: ResetPasswordRequest):
     timestamp = token_data.timestamp
     # Make sure timestamp is timezone-aware
     if timestamp.tzinfo is None:
-        timestamp = timestamp.replace(tzinfo=UTC)
+        timestamp = timestamp.replace(tzinfo=timezone.utc)
     
     is_first_login = token_data.is_first_login
     
@@ -289,7 +289,7 @@ async def reset_password(reset_token: str, request_data: ResetPasswordRequest):
     if hash_helper.verify(request_data.new_password, user.password):
         raise HTTPException(status_code=400, detail="New password cannot be the same as the old password.")
     
-    current_time = datetime.now(UTC)
+    current_time = datetime.now(timezone.utc)
     if current_time - timestamp > timedelta(minutes=5):
         await ResetToken.delete_token(reset_token)
         raise HTTPException(status_code=410, detail="Reset link has expired")
