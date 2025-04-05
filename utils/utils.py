@@ -29,6 +29,8 @@ Deloitte"""
     msg["Subject"] = subject
     msg.attach(MIMEText(body, "plain"))
 
+    print("this occured", msg.as_string())
+
     try:
         logging.info("Connecting to SMTP server...")
         server = smtplib.SMTP("smtp.gmail.com", 587)

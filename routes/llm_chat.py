@@ -216,10 +216,6 @@ async def initiate_chat(request: ChatStatusRequest, current_user: dict = Depends
     session = await Session.find_one({"chat_id": chat.chat_id})
     if not session:
         raise HTTPException(status_code=404, detail="Associated session not found")
-
-    # check if the session is active
-    if session.status != SessionStatus.ACTIVE:
-        raise HTTPException(status_code=400, detail="Session is not active")
     
     # Get associated chain
     chain = await Chain.find_one({"session_ids": session.session_id})
