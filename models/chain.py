@@ -1,5 +1,6 @@
 from typing import List, Optional
 import datetime
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from beanie import Document
 from pydantic import BaseModel, Field
@@ -19,11 +20,11 @@ class Chain(Document):
     session_ids: List[str] = Field(default_factory=list, description="List of session IDs in this chain")
     status: ChainStatus = Field(default=ChainStatus.ACTIVE, description="Current status of the chain")
     context: str = Field(default="", description="Context from previous sessions in the chain")
-    created_at: datetime.datetime = Field(default_factory=lambda: datetime.datetime.now(datetime.UTC), description="When the chain was created")
-    updated_at: datetime.datetime = Field(default_factory=lambda: datetime.datetime.now(datetime.UTC), description="When the chain was last updated")
-    completed_at: Optional[datetime.datetime] = Field(default=None, description="When the chain was completed")
-    escalated_at: Optional[datetime.datetime] = Field(default=None, description="When the chain was escalated")
-    cancelled_at: Optional[datetime.datetime] = Field(default=None, description="When the chain was cancelled")
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), description="When the chain was created")
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), description="When the chain was last updated")
+    completed_at: Optional[datetime] = Field(default=None, description="When the chain was completed")
+    escalated_at: Optional[datetime] = Field(default=None, description="When the chain was escalated")
+    cancelled_at: Optional[datetime] = Field(default=None, description="When the chain was cancelled")
     notes: Optional[str] = Field(default=None, description="Any additional notes about the chain")
 
     class Settings:
@@ -68,13 +69,13 @@ class Chain(Document):
     async def add_session(self, session_id: str):
         """Add a new session to this chain"""
         self.session_ids.append(session_id)
-        self.updated_at = datetime.datetime.now(datetime.UTC)
+        self.updated_at = datetime.now(timezone.utc)
         await self.save()
 
     async def update_context(self, new_context: str):
         """Update the chain's context with new information"""
         self.context = new_context
-        self.updated_at = datetime.datetime.now(datetime.UTC)
+        self.updated_at = datetime.now(timezone.utc)
         await self.save()
 
     async def complete_chain(self):
@@ -82,8 +83,8 @@ class Chain(Document):
         if self.status != ChainStatus.ACTIVE:
             raise ValueError("Only active chains can be completed")
         self.status = ChainStatus.COMPLETED
-        self.completed_at = datetime.datetime.now(datetime.UTC)
-        self.updated_at = datetime.datetime.now(datetime.UTC)
+        self.completed_at = datetime.now(timezone.utc)
+        self.updated_at = datetime.now(timezone.utc)
         await self.save()
 
     async def escalate_chain(self):
@@ -91,7 +92,7 @@ class Chain(Document):
         if self.status != ChainStatus.ACTIVE:
             raise ValueError("Only active chains can be escalated")
         self.status = ChainStatus.ESCALATED
-        self.escalated_at = datetime.datetime.now(datetime.UTC)
+        self.escalated_at = datetime.now(timezone.utc)
         # update all the chats in this chain to be escalated
         sessions = await Session.find({"session_id": {"$in": self.session_ids}}).to_list()
         for session in sessions:
@@ -100,7 +101,7 @@ class Chain(Document):
                 chat.is_escalated = True
                 await chat.save()
 
-        self.updated_at = datetime.datetime.now(datetime.UTC)
+        self.updated_at = datetime.now(timezone.utc)
         await self.save()
 
     async def cancel_chain(self):
@@ -108,6 +109,6 @@ class Chain(Document):
         if self.status not in [ChainStatus.ACTIVE, ChainStatus.ESCALATED]:
             raise ValueError("Only active or escalated chains can be cancelled")
         self.status = ChainStatus.CANCELLED
-        self.cancelled_at = datetime.datetime.now(datetime.UTC)
-        self.updated_at = datetime.datetime.now(datetime.UTC)
+        self.cancelled_at = datetime.now(timezone.utc)
+        self.updated_at = datetime.now(timezone.utc)
         await self.save() 

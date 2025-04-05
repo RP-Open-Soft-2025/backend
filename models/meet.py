@@ -20,8 +20,8 @@ class Meet(Document):
     scheduled_at: datetime.datetime = Field(..., description="When the meeting is scheduled for")
     duration_minutes: int = Field(..., ge=1, le=480, description="Duration of the meeting in minutes (1-480)")
     status: MeetStatus = Field(default=MeetStatus.SCHEDULED, description="Current status of the meeting")
-    created_at: datetime.datetime = Field(default_factory=lambda: datetime.datetime.now(datetime.UTC), description="When the meeting was created")
-    updated_at: datetime.datetime = Field(default_factory=lambda: datetime.datetime.now(datetime.UTC), description="When the meeting was last updated")
+    created_at: datetime.datetime = Field(default_factory=lambda: datetime.datetime.now(datetime.timezone.utc), description="When the meeting was created")
+    updated_at: datetime.datetime = Field(default_factory=lambda: datetime.datetime.now(datetime.timezone.utc), description="When the meeting was last updated")
     started_at: Optional[datetime.datetime] = Field(default=None, description="When the meeting started")
     ended_at: Optional[datetime.datetime] = Field(default=None, description="When the meeting ended")
     cancelled_at: Optional[datetime.datetime] = Field(default=None, description="When the meeting was cancelled")
@@ -71,7 +71,7 @@ class Meet(Document):
 
     @classmethod
     async def get_upcoming_meets(cls, user_id: str):
-        now = datetime.datetime.now(datetime.UTC)
+        now = datetime.datetime.now(datetime.timezone.utc)
         return await cls.find({
             "user_id": user_id,
             "scheduled_at": {"$gt": now},
@@ -80,38 +80,38 @@ class Meet(Document):
     
     async def initiate_meeting(self):
         self.status = MeetStatus.SCHEDULED
-        self.created_at = datetime.datetime.now(datetime.UTC)
-        self.updated_at = datetime.datetime.now(datetime.UTC)
+        self.created_at = datetime.datetime.now(datetime.timezone.utc)
+        self.updated_at = datetime.datetime.now(datetime.timezone.utc)
         await self.save()
 
     async def start_meeting(self):
         if self.status != MeetStatus.SCHEDULED:
             raise ValueError("Only scheduled meetings can be started")
         self.status = MeetStatus.IN_PROGRESS
-        self.started_at = datetime.datetime.now(datetime.UTC)
-        self.updated_at = datetime.datetime.now(datetime.UTC)
+        self.started_at = datetime.datetime.now(datetime.timezone.utc)
+        self.updated_at = datetime.datetime.now(datetime.timezone.utc)
         await self.save()
 
     async def complete_meeting(self):
         if self.status != MeetStatus.IN_PROGRESS:
             raise ValueError("Only in-progress meetings can be completed")
         self.status = MeetStatus.COMPLETED
-        self.ended_at = datetime.datetime.now(datetime.UTC)
-        self.updated_at = datetime.datetime.now(datetime.UTC)
+        self.ended_at = datetime.datetime.now(datetime.timezone.utc)
+        self.updated_at = datetime.datetime.now(datetime.timezone.utc)
         await self.save()
 
     async def mark_as_no_show(self):
         if self.status != MeetStatus.SCHEDULED:
             raise ValueError("Only scheduled meetings can be marked as no-show")
         self.status = MeetStatus.NO_SHOW
-        self.updated_at = datetime.datetime.now(datetime.UTC)
+        self.updated_at = datetime.datetime.now(datetime.timezone.utc)
         await self.save()
 
     async def cancel_meeting(self, cancelled_by: str):
         if self.status not in [MeetStatus.SCHEDULED, MeetStatus.IN_PROGRESS]:
             raise ValueError("Only scheduled or in-progress meetings can be cancelled")
         self.status = MeetStatus.CANCELLED
-        self.cancelled_at = datetime.datetime.now(datetime.UTC)
+        self.cancelled_at = datetime.datetime.now(datetime.timezone.utc)
         self.cancelled_by = cancelled_by
-        self.updated_at = datetime.datetime.now(datetime.UTC)
+        self.updated_at = datetime.datetime.now(datetime.timezone.utc)
         await self.save() 
