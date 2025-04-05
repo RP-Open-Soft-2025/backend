@@ -147,6 +147,8 @@ async def send_message(
     
     # Send message to LLM backend (without context)
     bot_response = "Thank you for reaching out. I'm here to help. Can you tell me more about what's on your mind?"
+    response_from_llm = ""
+    
     try:
         data = {
             "session_id": session.session_id,
@@ -157,7 +159,7 @@ async def send_message(
         response = requests.post(f"{llm_add}/chatbot/message", json=data, headers=headers)
         response_data = response.json()
         bot_response = response_data["message"]
-            
+        response_from_llm = response_data
     except Exception as e:
         raise HTTPException(500, detail=str(e))
         
@@ -170,6 +172,18 @@ async def send_message(
         "message": bot_response,
         "timestamp": datetime.now().isoformat()
     })
+
+    # Check if complete_the_chain or escalate_the_chain is true in LLM response
+    if response_from_llm and isinstance(response_from_llm, dict):
+        complete_the_chain = response_from_llm.get("complete_the_chain", False)
+        escalate_the_chain = response_from_llm.get("escalate_the_chain", False)
+        
+        if complete_the_chain:
+            await complete_chain(chain.chain_id)
+        
+        if escalate_the_chain:
+            await escalate_chain(chain.chain_id)
+
     
     return {
         "message": bot_response,
