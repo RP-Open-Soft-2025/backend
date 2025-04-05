@@ -47,10 +47,10 @@ async def lifespan(app: FastAPI):
         scheduler.shutdown()
 
 async def periodic_cleanup():
-    """Run token cleanup every 10 minutes."""
+    """Run token cleanup every 6 hours."""
     while True:
         await cleanup_expired_tokens()
-        await asyncio.sleep(600)  # 10 minutes
+        await asyncio.sleep(6 * 60 * 60)  # 6 hours
 
 # Create FastAPI app with lifespan
 app = FastAPI(
