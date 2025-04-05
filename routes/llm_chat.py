@@ -196,7 +196,8 @@ async def send_message(
         "chatId": chat.chat_id,
         "sessionStatus": session.status,
         "chainStatus": chain.status,
-        "can_end_chat": employee_messages_length > 10
+        "can_end_chat": employee_messages_length > 10,
+        "ended": complete_the_chain or escalate_the_chain
     }
 
 @router.patch("/initiate-chat")
