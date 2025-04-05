@@ -15,8 +15,11 @@ from collections import defaultdict
 from models.notification import Notification, NotificationStatus
 from bson import ObjectId
 import requests
+from config.config import Settings
 
 router = APIRouter()
+
+llm_add = Settings().LLM_ADDR
 
 
 async def verify_employee(token: str = Depends(JWTBearer())):
@@ -472,15 +475,6 @@ async def get_chat_messages(
             ))
     except Exception as e:
         print(f"Error processing messages: {str(e)}")
-        import traceback
-        print(traceback.format_exc())
-    
-    # Broadcast that the employee is viewing the chat
-    await employee_chat_manager.broadcast_to_employee(employee["employee_id"], {
-        "type": "chat_viewed",
-        "chat_id": chat_id,
-        "timestamp": datetime.datetime.now().isoformat()
-    })
     
     return ChatMessagesResponse(
         chat_id=chat.chat_id,
@@ -792,10 +786,15 @@ async def end_session(
         if session.session_id not in chain.session_ids:
             raise HTTPException(status_code=400, detail="Session does not belong to this chain")
         
+        # count the number of messages in the current session from the employee
+        employee_messages_length = len([msg for msg in chat.messages if msg.sender == SenderType.EMPLOYEE])
+
+        # if the number of employee messages is greater than 10, end the chat
+        if employee_messages_length < 10:
+            raise HTTPException(status_code=400, detail="Cannot end the chat as the employee has not sent more than 10 messages")
+        
         # Complete current session
-        session.status = SessionStatus.COMPLETED
-        session.completed_at = datetime.now(timezone.utc)
-        await session.save()
+        await session.complete_session()
         
         # Get all messages from current session
         current_session_messages = [
@@ -806,7 +805,7 @@ async def end_session(
             }
             for msg in chat.messages
         ]
-        
+
         # Prepare data for LLM backend
         data = {
             "chain_id": chain.chain_id,
@@ -825,7 +824,7 @@ async def end_session(
             await chain.update_context(updated_context)
         
         # Create new session for tomorrow
-        tomorrow = datetime.now(timezone.utc) + timedelta(days=1)
+        tomorrow = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=1)
         scheduled_time = tomorrow.replace(hour=10, minute=0, second=0, microsecond=0)
         
         # Create new chat for next session

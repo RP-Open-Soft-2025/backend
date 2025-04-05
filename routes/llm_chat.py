@@ -124,16 +124,19 @@ async def send_message(
     session = await Session.find_one({"chat_id": chat.chat_id})
     if not session:
         raise HTTPException(status_code=404, detail="Associated session not found")
+
+    # check if the session is active
+    if session.status != SessionStatus.ACTIVE:
+        raise HTTPException(status_code=400, detail="Session is not active")
     
     # Get associated chain
     chain = await Chain.find_one({"session_ids": session.session_id})
     if not chain:
         raise HTTPException(status_code=404, detail="Associated chain not found")
-    
-    # Activate session if not already active
-    if session.status != SessionStatus.ACTIVE:
-        session.status = SessionStatus.ACTIVE
-        await session.save()
+
+    # check if the chain is active
+    if chain.status != ChainStatus.ACTIVE:
+        raise HTTPException(status_code=400, detail="Chain is not active")
     
     # Add employee message
     await chat.add_message(SenderType.EMPLOYEE, request.message)
@@ -185,12 +188,15 @@ async def send_message(
         if escalate_the_chain:
             await escalate_chain(chain.chain_id)
 
+    # count the number of messages in the chat from the employee
+    employee_messages_length = len([msg for msg in chat.messages if msg.sender == SenderType.EMPLOYEE])
     
     return {
         "message": bot_response,
         "chatId": chat.chat_id,
         "sessionStatus": session.status,
-        "chainStatus": chain.status
+        "chainStatus": chain.status,
+        "can_end_chat": employee_messages_length > 10
     }
 
 @router.patch("/initiate-chat")
@@ -208,6 +214,10 @@ async def initiate_chat(request: ChatStatusRequest, current_user: dict = Depends
     session = await Session.find_one({"chat_id": chat.chat_id})
     if not session:
         raise HTTPException(status_code=404, detail="Associated session not found")
+
+    # check if the session is active
+    if session.status != SessionStatus.ACTIVE:
+        raise HTTPException(status_code=400, detail="Session is not active")
     
     # Get associated chain
     chain = await Chain.find_one({"session_ids": session.session_id})
