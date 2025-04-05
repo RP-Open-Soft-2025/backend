@@ -13,6 +13,7 @@ from routes.admin import verify_hr
 from routes.employee import ChatSummary, EmployeeChatsResponse 
 from models import Employee, Notification
 from models.employee import Role
+from utils.utils import send_new_session_email
 
 router = APIRouter()
 llm_add = Settings().LLM_ADDR
@@ -367,15 +368,15 @@ async def create_session(request: CreateSessionRequest):
             chain.session_ids.append(session.session_id)
             await chain.save()
 
+            # get the employee details
+            user = await Employee.find_one({"employee_id": request.employee_id})
+
+            # send a notification to the employee
+            await send_new_session_email(
+                to_email=user.email,
+                sub=f"A new support session has been scheduled for you on {request.scheduled_time.strftime('%Y-%m-%d %H:%M')} UTC."
+            )
+
             return session
         else:
             raise HTTPException(status_code=400, detail="Chain is not active")
-
-
-
-
-
-
-
-
-

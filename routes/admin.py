@@ -236,8 +236,6 @@ async def create_user(
     new_password=f"password{random_number}"
     hashed_password = pwd_context.hash(new_password)
     
-
-
     # Create new employee
     new_employee = Employee(
         employee_id=user_data.employee_id,
