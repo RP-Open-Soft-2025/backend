@@ -374,7 +374,21 @@ async def create_session(request: CreateSessionRequest):
             # send a notification to the employee
             await send_new_session_email(
                 to_email=user.email,
-                sub=f"A new support session has been scheduled for you on {request.scheduled_time.strftime('%Y-%m-%d %H:%M')} UTC."
+                sub=f"""Dear {user.name},
+
+A counseling session has been scheduled for you based on our employee wellness program.
+
+Session Details:
+- Date: {datetime.now().strftime('%Y-%m-%d')}
+- Time: {datetime.now().strftime('%H:%M')} timezone.utc
+- Deadline: {(datetime.now() + timedelta(days=2)).strftime('%Y-%m-%d')}
+- Session ID: {session.session_id}
+- Chain ID: {chain.chain_id}
+
+Please make sure to attend the session at the scheduled time. If you need to reschedule, please contact your HR representative.
+
+Best regards,
+HR Team"""
             )
 
             return session

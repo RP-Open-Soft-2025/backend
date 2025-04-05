@@ -115,3 +115,72 @@ Deloitte"""
     except Exception as e:
         logging.error(f"Error sending email: {e}")
         raise HTTPException(status_code=500, detail="Failed to send email")
+
+
+# def create a mail sender for it the deadline of a session +1 day is over
+def send_deadline_reminder_email(to_email: str):
+    sender_email = Settings().sender_email
+    sender_password = Settings().sender_password
+    subject = "Session Deadline Reminder"
+    body = f"""Dear Employee,
+
+This is a reminder that your session is scheduled to end in 1 day. Please make sure to attend the session at the scheduled time.
+
+Best regards,
+Deloitte"""
+
+    msg = MIMEMultipart()
+    msg["From"] = sender_email
+    msg["To"] = to_email
+    msg["Subject"] = subject
+    msg.attach(MIMEText(body, "plain"))
+
+    try:
+        logging.info("Connecting to SMTP server...")
+        server = smtplib.SMTP("smtp.gmail.com", 587)
+        server.starttls()
+        server.login(sender_email, sender_password)
+        logging.info("Successfully authenticated")
+
+        logging.info(f"Sending email to {to_email}")
+        server.sendmail(sender_email, to_email, msg.as_string())
+        server.quit()
+        logging.info("Email sent successfully")
+        
+    except Exception as e:
+        logging.error(f"Error sending email: {e}")
+        raise HTTPException(status_code=500, detail="Failed to send email")
+
+def send_deadline_over_email(to_email: str):
+    sender_email = Settings().sender_email
+    sender_password = Settings().sender_password
+    subject = "Session Deadline Over"
+    # the body contains that the deadline is over and the employee has not attended the session and will be reported to the HR
+    body = f"""Dear Employee,
+
+This is a reminder that your session deadline has passed. You have not attended the session and will be reported to the HR.
+
+Best regards,
+Deloitte"""
+
+    msg = MIMEMultipart()
+    msg["From"] = sender_email
+    msg["To"] = to_email
+    msg["Subject"] = subject
+    msg.attach(MIMEText(body, "plain"))
+
+    try:
+        logging.info("Connecting to SMTP server...")
+        server = smtplib.SMTP("smtp.gmail.com", 587)
+        server.starttls()
+        server.login(sender_email, sender_password)
+        logging.info("Successfully authenticated")
+
+        logging.info(f"Sending email to {to_email}")
+        server.sendmail(sender_email, to_email, msg.as_string())
+        server.quit()
+        logging.info("Email sent successfully")
+        
+    except Exception as e:
+        logging.error(f"Error sending email: {e}")
+        raise HTTPException(status_code=500, detail="Failed to send email")
