@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 import uuid
 from models.chat import Chat
 from models.session import Session
+from models.session import SessionStatus
 
 class ChainStatus(str, Enum):
     ACTIVE = "active"    # Chain is ongoing
@@ -85,6 +86,12 @@ class Chain(Document):
         self.status = ChainStatus.COMPLETED
         self.completed_at = datetime.now(timezone.utc)
         self.updated_at = datetime.now(timezone.utc)
+
+        # update all the chats in this chain to be completed
+        sessions = await Session.find({"session_id": {"$in": self.session_ids}}).to_list()
+        for session in sessions:
+            await session.complete_session()
+        
         await self.save()
 
     async def escalate_chain(self):
