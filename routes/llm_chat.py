@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, Depends, WebSocket, WebSocketDisconnect
-from typing import List, Dict, Any, Set
+from typing import List, Dict, Any, Set, Optional
 from models.chat import Chat, ChatMode, SenderType, SentimentType
 from models.session import Session, SessionStatus
 from models.chain import Chain, ChainStatus
@@ -49,6 +49,12 @@ class ChainCompletionRequest(BaseModel):
     chain_id: str
     session_id: str
     reason: str
+
+class CreateSessionRequest(BaseModel):
+    employee_id: str
+    chain_id: Optional[str] = None
+    context: Optional[str] = None
+
 # Add WebSocket connection manager
 class LLMConnectionManager:
     def __init__(self):
@@ -320,3 +326,45 @@ async def get_chat_history(
         return response.json()
     except Exception as e:
         raise HTTPException(500, detail=str(e))
+
+@router.post("/create-session")
+async def create_session(request: CreateSessionRequest):
+    """
+    Create a new session for the employee.
+    """
+    # find the chain id if provided
+    if request.chain_id:
+        chain = await Chain.find_one({"chain_id": request.chain_id})
+        if not chain:
+            raise HTTPException(status_code=404, detail="Chain not found")
+
+        # check if the chain is active, if active create the session in the chain
+        if chain.status == ChainStatus.ACTIVE:
+            # create a new chat
+            chat = Chat(user_id=request.employee_id)
+            await chat.save()
+
+            # create a new session
+            session = await Session(
+                employee_id=request.employee_id,
+                chat_id=chat.chat_id,
+                status=SessionStatus.PENDING,
+            )
+            await session.save()
+
+            # update the chain with the new session id
+            chain.session_ids.append(session.session_id)
+            await chain.save()
+
+            return session
+        else:
+            raise HTTPException(status_code=400, detail="Chain is not active")
+
+
+
+
+
+
+
+
+

@@ -17,6 +17,7 @@ import random
 from utils.utils import send_new_employee_email
 import logging
 from config.config import Settings
+from utils.utils import send_new_session_email
 
 
 import requests
@@ -1261,6 +1262,12 @@ async def create_chain(
         
         report = response.json()
         print(report)
+
+        # mail that a session has been created
+        await send_new_session_email(
+            to_email=employee.email,
+            sub=f"A new support session has been scheduled for you on {request.scheduled_time.strftime('%Y-%m-%d %H:%M')} UTC."
+        )
 
         return chain
         
