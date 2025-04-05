@@ -3,11 +3,23 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from fastapi import HTTPException
 import logging
-from config.config import Settings
+# Avoid direct import to prevent circular references
+# from config.config import Settings
+
+# Settings will be imported when functions are called
+_settings = None
+
+def get_settings():
+    global _settings
+    if _settings is None:
+        from config.config import Settings
+        _settings = Settings()
+    return _settings
 
 async def send_email(to_email: str, reset_link: str):
-    sender_email = Settings().sender_email
-    sender_password = Settings().sender_password
+    settings = get_settings()
+    sender_email = settings.sender_email
+    sender_password = settings.sender_password
     subject = "Password Reset Request"
     body = f"""Dear User,
 
@@ -46,8 +58,9 @@ Deloitte"""
         raise HTTPException(status_code=500, detail="Failed to send email")
     
 async def send_new_session_email(to_email: str, sub: str):
-    sender_email = Settings().sender_email
-    sender_password = Settings().sender_password
+    settings = get_settings()
+    sender_email = settings.sender_email
+    sender_password = settings.sender_password
     subject = "Counseling Session Scheduled"
     body = sub
 
@@ -74,8 +87,9 @@ async def send_new_session_email(to_email: str, sub: str):
         raise HTTPException(status_code=500, detail="Failed to send email")
     
 async def send_new_employee_email(to_email: str, user:str , password:str):
-    sender_email = Settings().sender_email
-    sender_password = Settings().sender_password
+    settings = get_settings()
+    sender_email = settings.sender_email
+    sender_password = settings.sender_password
     subject = "Your Account Credentials"
     body = f"""Dear Employee,
 
@@ -119,8 +133,9 @@ Deloitte"""
 
 # def create a mail sender for it the deadline of a session +1 day is over
 async def send_deadline_reminder_email(to_email: str):
-    sender_email = Settings().sender_email
-    sender_password = Settings().sender_password
+    settings = get_settings()
+    sender_email = settings.sender_email
+    sender_password = settings.sender_password
     subject = "Session Deadline Reminder"
     body = f"""Dear Employee,
 
@@ -152,8 +167,9 @@ Deloitte"""
         raise HTTPException(status_code=500, detail="Failed to send email")
 
 async def send_deadline_over_email(to_email: str):
-    sender_email = Settings().sender_email
-    sender_password = Settings().sender_password
+    settings = get_settings()
+    sender_email = settings.sender_email
+    sender_password = settings.sender_password
     subject = "Session Deadline Over"
     # the body contains that the deadline is over and the employee has not attended the session and will be reported to the HR
     body = f"""Dear Employee,
@@ -184,3 +200,38 @@ Deloitte"""
     except Exception as e:
         logging.error(f"Error sending email: {e}")
         raise HTTPException(status_code=500, detail="Failed to send email")
+
+
+async def send_escalation_mail(to_email: str, sub: str):
+    settings = get_settings()
+    sender_email = settings.sender_email
+    sender_password = settings.sender_password
+    subject = "Escalation Required"
+    body = sub
+
+    msg = MIMEMultipart()
+    msg["From"] = sender_email
+    msg["To"] = to_email
+    msg["Subject"] = subject
+    msg.attach(MIMEText(body, "plain"))
+
+    try:
+        logging.info("Connecting to SMTP server...")
+        server = smtplib.SMTP("smtp.gmail.com", 587)
+        server.starttls()
+        server.login(sender_email, sender_password)
+        logging.info("Successfully authenticated")
+
+        logging.info(f"Sending email to {to_email}")
+        server.sendmail(sender_email, to_email, msg.as_string())
+        server.quit()
+        logging.info("Email sent successfully")
+        
+    except Exception as e:
+        logging.error(f"Error sending email: {e}")
+        raise HTTPException(status_code=500, detail="Failed to send email")
+    
+    
+
+    
+
