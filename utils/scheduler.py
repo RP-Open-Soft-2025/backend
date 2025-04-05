@@ -9,7 +9,7 @@ from models.notification import Notification, NotificationStatus
 from models.chain import Chain, ChainStatus
 from utils.utils import send_new_session_email
 import json
-from datetime import datetime, timedelta, UTC
+from datetime import datetime, timedelta, timezone
 import logging
 import uuid
 import os
@@ -80,7 +80,7 @@ async def generate_employee_data_json():
 async def get_employees_in_cooldown():
     """Get list of employees who have had sessions in the cooldown period."""
     try:
-        cooldown_date = datetime.now(UTC) - timedelta(days=COOLDOWN_PERIOD_DAYS)
+        cooldown_date = datetime.now(timezone.utc) - timedelta(days=COOLDOWN_PERIOD_DAYS)
         print('cooldown date: ', cooldown_date)
         # Find all sessions completed after the cooldown date
         recent_sessions = await Session.find({
@@ -133,12 +133,12 @@ async def schedule_session_and_notify(employee_id: str):
         chat = Chat(
             chat_id=f"CHAT{uuid.uuid4().hex[:6].upper()}",
             user_id=employee_id,
-            created_at=datetime.now(UTC)
+            created_at=datetime.now(timezone.utc)
         )
         await chat.save()
 
         # Schedule session for tomorrow at 10 AM
-        tomorrow = datetime.now(UTC) + timedelta(days=1)
+        tomorrow = datetime.now(timezone.utc) + timedelta(days=1)
         scheduled_time = tomorrow.replace(hour=10, minute=0, second=0, microsecond=0)
 
         # Create new session
@@ -156,7 +156,7 @@ async def schedule_session_and_notify(employee_id: str):
 
         # Create notification
         notification_title = "Counseling Session Scheduled"
-        notification_desc = f"A counseling session has been scheduled for you on {scheduled_time.strftime('%Y-%m-%d %H:%M')} UTC."
+        notification_desc = f"A counseling session has been scheduled for you on {scheduled_time.strftime('%Y-%m-%d %H:%M')} timezone.utc."
         await create_notification(employee_id, notification_title, notification_desc)
 
         # Prepare email content
@@ -166,7 +166,7 @@ A counseling session has been scheduled for you based on our employee wellness p
 
 Session Details:
 - Date: {scheduled_time.strftime('%Y-%m-%d')}
-- Time: {scheduled_time.strftime('%H:%M')} UTC
+- Time: {scheduled_time.strftime('%H:%M')} timezone.utc
 - Session ID: {session.session_id}
 - Chain ID: {chain.chain_id}
 
@@ -207,7 +207,7 @@ async def run_employee_selection():
         eligible_employees = [emp_id for emp_id in selected_employees if emp_id not in employees_in_cooldown]
         
         # Log the results
-        logger.info(f"Employee selection completed at {datetime.now(UTC)}")
+        logger.info(f"Employee selection completed at {datetime.now(timezone.utc)}")
         logger.info(f"Selected {len(selected_employees)} employees for counseling")
         logger.info(f"{len(employees_in_cooldown)} employees in cooldown period")
         logger.info(f"{len(eligible_employees)} employees eligible for scheduling")
