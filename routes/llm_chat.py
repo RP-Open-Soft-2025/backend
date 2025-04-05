@@ -6,7 +6,7 @@ from models.chain import Chain, ChainStatus
 from auth.jwt_bearer import JWTBearer
 from auth.jwt_handler import decode_jwt
 from pydantic import BaseModel, Field
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from config.config import Settings
 import requests
 from routes.admin import verify_hr
@@ -346,7 +346,7 @@ async def end_session(
         
         # Complete current session
         session.status = SessionStatus.COMPLETED
-        session.completed_at = datetime.now(datetime.UTC)
+        session.completed_at = datetime.now(timezone.utc)
         await session.save()
         
         # Get all messages from current session
@@ -377,7 +377,7 @@ async def end_session(
             await chain.update_context(updated_context)
         
         # Create new session for tomorrow
-        tomorrow = datetime.now(datetime.UTC) + datetime.timedelta(days=1)
+        tomorrow = datetime.now(timezone.utc) + timedelta(days=1)
         scheduled_time = tomorrow.replace(hour=10, minute=0, second=0, microsecond=0)
         
         # Create new chat for next session

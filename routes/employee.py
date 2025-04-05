@@ -206,7 +206,7 @@ async def get_user_profile(
                     )
 
                 # Find the most recently updated chat
-                latest_chat = max(chats, key=lambda x: x.updated_at.replace(tzinfo=datetime.UTC) if hasattr(x, 'updated_at') else datetime.datetime.min.replace(tzinfo=datetime.UTC))
+                latest_chat = max(chats, key=lambda x: x.updated_at.replace(tzinfo=datetime.timezone.utc) if hasattr(x, 'updated_at') else datetime.datetime.min.replace(tzinfo=datetime.timezone.utc))
                 
                 if latest_chat:
                     last_message = None
@@ -217,17 +217,17 @@ async def get_user_profile(
                         if hasattr(last_message_obj, 'text'):
                             last_message = last_message_obj.text
                         if hasattr(last_message_obj, 'timestamp'):
-                            last_message_time = last_message_obj.timestamp.replace(tzinfo=datetime.UTC)
+                            last_message_time = last_message_obj.timestamp.replace(tzinfo=datetime.timezone.utc)
                     
                     response.chat_summary = ChatSummary(
                         chat_id=latest_chat.chat_id,
                         last_message=last_message,
-                        last_message_time=last_message_time or latest_chat.updated_at.replace(tzinfo=datetime.UTC),
+                        last_message_time=last_message_time or latest_chat.updated_at.replace(tzinfo=datetime.timezone.utc),
                         unread_count=latest_chat.unread_count if hasattr(latest_chat, 'unread_count') else 0,
                         total_messages=len(latest_chat.messages),
                         chat_mode=latest_chat.chat_mode.value if hasattr(latest_chat, 'chat_mode') else "BOT",
                         is_escalated=latest_chat.is_escalated if hasattr(latest_chat, 'is_escalated') else False,
-                        created_at=latest_chat.created_at.replace(tzinfo=datetime.UTC)
+                        created_at=latest_chat.created_at.replace(tzinfo=datetime.timezone.utc)
                     )
                         
         except Exception as e:
@@ -240,7 +240,7 @@ async def get_user_profile(
                     {"user_id": employee["employee_id"]},
                     {"with_user_id": employee["employee_id"]}
                 ],
-                "scheduled_at": {"$gt": datetime.datetime.now(datetime.UTC)},
+                "scheduled_at": {"$gt": datetime.datetime.now(datetime.timezone.utc)},
                 "status": MeetStatus.SCHEDULED
             }).count()
         except Exception as e:
@@ -250,7 +250,7 @@ async def get_user_profile(
             # Get upcoming sessions count
             response.upcoming_sessions = await Session.find({
                 "user_id": employee["employee_id"],
-                "scheduled_at": {"$gt": datetime.datetime.now(datetime.UTC)},
+                "scheduled_at": {"$gt": datetime.datetime.now(datetime.timezone.utc)},
                 "status": SessionStatus.PENDING
             }).count()
         except Exception as e:
@@ -293,7 +293,7 @@ async def get_scheduled_meets(
             # print('employee_id: ',employee["employee_id"])
             organizer_meets = await Meet.find({
                 "user_id": employee["employee_id"],
-                # "scheduled_at": {"$gt": datetime.datetime.now(datetime.UTC)},
+                # "scheduled_at": {"$gt": datetime.datetime.now(datetime.timezone.utc)},
                 "status": MeetStatus.SCHEDULED
             }).to_list()
             print(organizer_meets)
@@ -304,7 +304,7 @@ async def get_scheduled_meets(
         try:
             participant_meets = await Meet.find({
                 "with_user_id": employee["employee_id"],
-                # "scheduled_at": {"$gt": datetime.datetime.now(datetime.UTC)},  
+                # "scheduled_at": {"$gt": datetime.datetime.now(datetime.timezone.utc)},  
                 "status": MeetStatus.SCHEDULED
             }).to_list()
         except Exception as e:
@@ -333,7 +333,7 @@ async def get_scheduled_sessions(
     try:
         sessions = await Session.find({
             "user_id": employee["employee_id"],
-            # "scheduled_at": {"$gt": datetime.datetime.now(datetime.UTC)},
+            # "scheduled_at": {"$gt": datetime.datetime.now(datetime.timezone.utc)},
             "status": {"$in": [SessionStatus.PENDING, SessionStatus.ACTIVE]}
         }).to_list()
 
@@ -698,7 +698,7 @@ async def get_chain_messages(
         # Process each session and its chat
         session_groups = []
         total_messages = 0
-        last_updated = datetime.datetime.min.replace(tzinfo=datetime.UTC)
+        last_updated = datetime.datetime.min.replace(tzinfo=datetime.timezone.utc)
         
         for session in sessions:
             # Get chat for this session
@@ -710,7 +710,7 @@ async def get_chain_messages(
                     # Ensure timestamp is timezone-aware
                     msg_timestamp = msg.timestamp
                     if msg_timestamp and msg_timestamp.tzinfo is None:
-                        msg_timestamp = msg_timestamp.replace(tzinfo=datetime.UTC)
+                        msg_timestamp = msg_timestamp.replace(tzinfo=datetime.timezone.utc)
                     
                     messages.append(ChatMessage(
                         sender=msg.sender_type.value,
@@ -725,7 +725,7 @@ async def get_chain_messages(
                 if messages:
                     latest_msg_time = max(
                         (msg.timestamp for msg in messages if msg.timestamp is not None),
-                        default=datetime.datetime.min.replace(tzinfo=datetime.UTC)
+                        default=datetime.datetime.min.replace(tzinfo=datetime.timezone.utc)
                     )
                     if latest_msg_time > last_updated:
                         last_updated = latest_msg_time
@@ -744,7 +744,7 @@ async def get_chain_messages(
         session_groups.sort(
             key=lambda x: min(
                 (msg.timestamp for msg in x.messages if msg.timestamp is not None),
-                default=datetime.datetime.min.replace(tzinfo=datetime.UTC)
+                default=datetime.datetime.min.replace(tzinfo=datetime.timezone.utc)
             )
         )
         

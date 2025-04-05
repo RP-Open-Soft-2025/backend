@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter, HTTPException, Depends
 from typing import List, Optional
-import datetime
+from datetime import timezone, datetime, timedelta
 from pydantic import BaseModel, EmailStr, Field
 from models.session import Session, SessionStatus
 from models.employee import Employee, Role
@@ -33,7 +33,7 @@ class DeleteUserRequest(BaseModel):
     reason: Optional[str] = Field(default=None, description="Reason for deleting the user")
 
 class CreateSessionRequest(BaseModel):
-    scheduled_at: datetime.datetime = Field(..., description="When the session is scheduled for")
+    scheduled_at: datetime = Field(..., description="When the session is scheduled for")
     notes: Optional[str] = Field(default=None, description="Any additional notes about the session")
 
 class SessionResponse(BaseModel):
@@ -41,7 +41,7 @@ class SessionResponse(BaseModel):
     employee_id: str
     chat_id: str
     status: str
-    scheduled_at: datetime.datetime
+    scheduled_at: datetime
 
 class ReassignHrRequest(BaseModel):
     newHrId: str = Field(..., description="ID of the new HR to assign")
@@ -56,7 +56,7 @@ class NotificationResponse(BaseModel):
     employee_id: str
     title: str
     description: str
-    created_at: datetime.datetime
+    created_at: datetime
     status: NotificationStatus
 
 class ChainResponse(BaseModel):
@@ -65,17 +65,17 @@ class ChainResponse(BaseModel):
     session_ids: List[str]
     status: ChainStatus
     context: Optional[str] = None
-    created_at: datetime.datetime
-    updated_at: datetime.datetime
-    completed_at: Optional[datetime.datetime] = None
-    escalated_at: Optional[datetime.datetime] = None
-    cancelled_at: Optional[datetime.datetime] = None
+    created_at: datetime
+    updated_at: datetime
+    completed_at: Optional[datetime] = None
+    escalated_at: Optional[datetime] = None
+    cancelled_at: Optional[datetime] = None
     notes: Optional[str] = None
 
 class CreateChainRequest(BaseModel):
     employee_id: str = Field(..., description="ID of the employee to create chain for")
     notes: Optional[str] = Field(default=None, description="Any additional notes about the chain")
-    scheduled_time: Optional[datetime.datetime] = Field(
+    scheduled_time: Optional[datetime] = Field(
         default=None,
         description="When to schedule the first session. Defaults to tomorrow at 10 AM."
     )
@@ -239,7 +239,7 @@ async def create_user(
         password=hashed_password,
         role=user_data.role,
         manager_id=user_data.manager_id,
-        last_ping=datetime.datetime.now()
+        last_ping=datetime.now(timezone.utc)
     )
     
     try:
@@ -284,7 +284,7 @@ async def delete_user(
         )
 
     # Prevent deleting the current admin
-    if employee.employee_id == admin["employee_id"]:
+    if employee.employee_id == admin.employee_id:
         raise HTTPException(
             status_code=400,
             detail="Cannot delete your own account"
@@ -295,7 +295,7 @@ async def delete_user(
         await employee.delete()
         return {
             "message": f"Employee {delete_data.employee_id} deleted successfully",
-            "deleted_by": admin["employee_id"],
+            "deleted_by": admin.employee_id,
             "reason": delete_data.reason
         }
     except Exception as e:
@@ -468,8 +468,8 @@ async def block_user(
 
     # Block the employee
     employee.is_blocked = True
-    employee.blocked_at = datetime.datetime.now(datetime.UTC)
-    employee.blocked_by = hr["employee_id"]
+    employee.blocked_at = datetime.now(timezone.utc)
+    employee.blocked_by = hr.employee_id
     employee.blocked_reason = block_data.reason
 
     try:
@@ -844,7 +844,7 @@ async def complete_session(
     try:
         # Update session status
         session.status = SessionStatus.COMPLETED
-        session.completed_at = datetime.datetime.now(datetime.UTC)
+        session.completed_at = datetime.now(timezone.utc)
         session.notes = session_data.notes
         await session.save()
 
@@ -1201,7 +1201,7 @@ async def create_chain(
         
         # Set default scheduled time to tomorrow at 10 AM if not provided
         if not request.scheduled_time:
-            tomorrow = datetime.datetime.now(datetime.UTC) + datetime.timedelta(days=1)
+            tomorrow = datetime.now(timezone.utc) + timedelta(days=1)
             request.scheduled_time = tomorrow.replace(hour=10, minute=0, second=0, microsecond=0)
         
         # Create a new chat for the session
