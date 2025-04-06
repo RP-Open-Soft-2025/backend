@@ -21,26 +21,18 @@ router = APIRouter()
 
 llm_add = Settings().LLM_ADDR
 
-
 async def verify_employee(token: str = Depends(JWTBearer())):
-    """Verify that the user is an employee."""
+    """Verify that the user exists in the database."""
+    if not token or token.lower() == "not authenticated":
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    
     payload = decode_jwt(token)
-    if not payload or payload.get("role") != "employee":
-        raise HTTPException(
-            status_code=403,
-            detail="Only employees can access this endpoint"
-        )
-    return payload
-
-async def verify_user(token: str = Depends(JWTBearer())):
-    """Verify that the user is an employee."""
-    payload = decode_jwt(token)
-    if not payload:
-        raise HTTPException(
-            status_code=403,
-            detail="Only authenticated users can access this endpoint"
-        )
-    return payload
+    employee = await Employee.find_one({"employee_id": payload["employee_id"]})
+    
+    if not employee:
+        raise HTTPException(status_code=403, detail="Only authenticated users can access this endpoint")
+    
+    return employee
 
 
 class MeetResponse(BaseModel):
@@ -148,14 +140,9 @@ class ChainMessagesResponse(BaseModel):
     chat_mode: str
     is_escalated: bool = False
 
-
-class EndSessionRequest(BaseModel):
-    chat_id: str = Field(..., description="ID of the current chat")
-    chain_id: str = Field(..., description="ID of the chain")
-
 @router.get("/profile", response_model=UserDetails, tags=["Employee"])
 async def get_user_profile(
-    employee: dict = Depends(verify_user)
+    employee: dict = Depends(verify_employee)
 ):
     """
     Get detailed information about the current user including:
@@ -166,22 +153,13 @@ async def get_user_profile(
     - Company data
     """
     try:
-        # Get employee details
-        employee_data = await Employee.get_by_id(employee["employee_id"])
-        if not employee_data:
-            raise HTTPException(
-                status_code=404,
-                detail="Employee not found"
-            )
-
-        # Initialize response with default values
         response = UserDetails(
-            employee_id=employee_data.employee_id,
-            name=employee_data.name,
-            email=employee_data.email,
-            role=employee_data.role,
-            manager_id=employee_data.manager_id,
-            is_blocked=employee_data.is_blocked,
+            employee_id=employee.employee_id,
+            name=employee.name,
+            email=employee.email,
+            role=employee.role,
+            manager_id=employee.manager_id,
+            is_blocked=employee.is_blocked,
             mood_stats=MoodScoreStats(),
             chat_summary=ChatSummary(
                 chat_id="",
@@ -189,13 +167,13 @@ async def get_user_profile(
             ),
             upcoming_meets=0,
             upcoming_sessions=0,
-            company_data=employee_data.company_data,
-            meeting_link=employee_data.meeting_link if employee_data.role == "hr" else None
+            company_data=employee.company_data,
+            meeting_link=employee.meeting_link
         )
 
         try:
             # Get all chats for mood analysis
-            chats = await Chat.find({"user_id": employee["employee_id"]}).to_list()
+            chats = await Chat.find({"user_id": employee.employee_id}).to_list()
             
             if chats and len(chats) > 0:
                 # Calculate mood statistics
@@ -250,8 +228,8 @@ async def get_user_profile(
             # Get upcoming meetings count
             response.upcoming_meets = await Meet.find({
                 "$or": [
-                    {"user_id": employee["employee_id"]},
-                    {"with_user_id": employee["employee_id"]}
+                    {"user_id": employee.employee_id},
+                    {"with_user_id": employee.employee_id}
                 ],
                 "scheduled_at": {"$gt": datetime.datetime.now(datetime.timezone.utc)},
                 "status": MeetStatus.SCHEDULED
@@ -262,7 +240,7 @@ async def get_user_profile(
         try:
             # Get upcoming sessions count
             response.upcoming_sessions = await Session.find({
-                "user_id": employee["employee_id"],
+                "user_id": employee.employee_id,
                 "scheduled_at": {"$gt": datetime.datetime.now(datetime.timezone.utc)},
                 "status": SessionStatus.PENDING
             }).count()
@@ -270,9 +248,9 @@ async def get_user_profile(
             print(f"Error getting upcoming sessions: {str(e)}")
 
         # Add company data if available
-        if employee_data.company_data:
+        if employee.company_data:
             try:
-                response.company_data = employee_data.company_data
+                response.company_data = employee.company_data
             except Exception as e:
                 print(f"Error processing company data: {str(e)}")
                 response.company_data = None
@@ -321,7 +299,7 @@ async def get_scheduled_meets(
         try:
             # print('employee_id: ',employee["employee_id"])
             organizer_meets = await Meet.find({
-                "user_id": employee["employee_id"],
+                "user_id": employee.employee_id,
                 # "scheduled_at": {"$gt": datetime.datetime.now(datetime.timezone.utc)},
                 "status": MeetStatus.SCHEDULED
             }).to_list()
@@ -332,7 +310,7 @@ async def get_scheduled_meets(
         # Get meetings where user is the participant
         try:
             participant_meets = await Meet.find({
-                "with_user_id": employee["employee_id"],
+                "with_user_id": employee.employee_id,
                 # "scheduled_at": {"$gt": datetime.datetime.now(datetime.timezone.utc)},  
                 "status": MeetStatus.SCHEDULED
             }).to_list()
@@ -361,7 +339,7 @@ async def get_scheduled_sessions(
     """
     try:
         sessions = await Session.find({
-            "user_id": employee["employee_id"],
+            "user_id": employee.employee_id,
             # "scheduled_at": {"$gt": datetime.datetime.now(datetime.timezone.utc)},
             "status": {"$in": [SessionStatus.PENDING, SessionStatus.ACTIVE]}
         }).to_list()
@@ -428,7 +406,7 @@ async def get_employee_chats(
     """
     try:
         # Get all chats for the employee
-        chats = await Chat.find({"user_id": employee["employee_id"]}).to_list()
+        chats = await Chat.find({"user_id": employee.employee_id}).to_list()
 
         chat_summaries = []
         for chat in chats:
@@ -456,7 +434,7 @@ async def get_employee_chats(
         # chat_summaries.sort(key=lambda x: x.last_message_time or datetime.datetime.min, reverse=True)
 
         # Broadcast that the employee is viewing their chats
-        await employee_chat_manager.broadcast_to_employee(employee["employee_id"], {
+        await employee_chat_manager.broadcast_to_employee(employee.employee_id, {
             "type": "chats_viewed",
             "timestamp": datetime.datetime.now().isoformat(),
             "total_chats": len(chat_summaries)
@@ -488,7 +466,7 @@ async def get_chat_messages(
         raise HTTPException(status_code=404, detail="Chat not found")
     
     # Verify the employee owns this chat
-    if chat.user_id != employee["employee_id"]:
+    if chat.user_id != employee.employee_id:
         raise HTTPException(
             status_code=403,
             detail="You can only access your own chats"
@@ -520,7 +498,7 @@ async def ping_user(employee: dict = Depends(verify_employee)):
     """
     Update the last known ping time for the employee and return notifications.
     """
-    emp_id = employee["employee_id"]
+    emp_id = employee.employee_id
     try:
         # Update last ping time
         await Employee.find_one({"employee_id": emp_id}).update_one({"$set": {"last_ping": datetime.datetime.now()}})
@@ -573,7 +551,7 @@ async def mark_notification_read(
             )
         
         # Verify the notification belongs to the employee
-        if notification.employee_id != employee["employee_id"]:
+        if notification.employee_id != employee.employee_id:
             raise HTTPException(
                 status_code=403,
                 detail="You can only mark your own notifications as read"
@@ -608,7 +586,7 @@ async def mark_all_notifications_read(
     try:
         # Get all unread notifications for the employee
         notifications = await Notification.find({
-            "employee_id": employee["employee_id"],
+            "employee_id": employee.employee_id,
             "status": NotificationStatus.UNREAD
         }).to_list()
         
@@ -649,7 +627,7 @@ async def get_employee_chains(employee: dict = Depends(verify_employee)):
     Get all chains for the current employee.
     """
     try:
-        chains = await Chain.find({"employee_id": employee["employee_id"]}).to_list()       
+        chains = await Chain.find({"employee_id": employee.employee_id}).to_list()
         return chains
     except Exception as e:
         raise HTTPException(
@@ -671,7 +649,7 @@ async def get_chain_details(chain_id: str, employee: dict = Depends(verify_emplo
             )
         
         # Verify the chain belongs to the employee
-        if chain.employee_id != employee["employee_id"]:
+        if chain.employee_id != employee.employee_id:
             raise HTTPException(
                 status_code=403,
                 detail="Not authorized to access this chain"
@@ -701,7 +679,7 @@ async def get_chain_messages(
             )
         
         # Verify the chain belongs to the employee
-        if chain.employee_id != employee["employee_id"]:
+        if chain.employee_id != employee.employee_id:
             raise HTTPException(
                 status_code=403,
                 detail="Not authorized to access this chain"
@@ -779,112 +757,49 @@ async def get_chain_messages(
             detail=f"Error retrieving chain messages: {str(e)}"
         )
 
-@router.post("/end-session", tags=["LLM"])
-async def end_session(
-    request: EndSessionRequest,
+class ChatToChainResponse(BaseModel):
+    chain_id: str
+    status: ChainStatus
+
+@router.get("/chat-to-chain/{chat_id}", response_model=ChatToChainResponse, tags=["Employee"])
+async def get_chain_from_chat(
+    chat_id: str,
     employee: dict = Depends(verify_employee)
 ):
     """
-    End the current session, update chain context, and create a new session.
+    Get the chain ID associated with a chat ID.
+    Verifies that the chat belongs to the requesting user.
     """
     try:
-        # Get current chat
-        chat = await Chat.get_chat_by_id(request.chat_id)
+        # Get the chat
+        chat = await Chat.get_chat_by_id(chat_id)
         if not chat:
             raise HTTPException(status_code=404, detail="Chat not found")
         
-        # Verify employee owns this chat
-        if chat.user_id != employee["employee_id"]:
-            raise HTTPException(status_code=403, detail="Not authorized to access this chat")
+        # Verify the employee owns this chat
+        if chat.user_id != employee.employee_id:
+            raise HTTPException(
+                status_code=403,
+                detail="You can only access your own chats"
+            )
         
-        # Get current session
-        session = await Session.find_one({"chat_id": chat.chat_id})
+        # Find the session that contains this chat
+        session = await Session.find_one({"chat_id": chat_id})
         if not session:
-            raise HTTPException(status_code=404, detail="Associated session not found")
+            raise HTTPException(status_code=404, detail="No session found for this chat")
         
-        # Get associated chain
-        chain = await Chain.get_by_id(request.chain_id)
+        # Find the chain that contains this session
+        chain = await Chain.find_one({"session_ids": session.session_id})
         if not chain:
-            raise HTTPException(status_code=404, detail="Chain not found")
+            raise HTTPException(status_code=404, detail="No chain found for this chat")
         
-        # Verify session belongs to chain
-        if session.session_id not in chain.session_ids:
-            raise HTTPException(status_code=400, detail="Session does not belong to this chain")
-        
-        # count the number of messages in the current session from the employee
-        employee_messages_length = len([msg for msg in chat.messages if msg.sender == SenderType.EMPLOYEE])
-
-        # if the number of employee messages is greater than 10, end the chat
-        if employee_messages_length < 10:
-            raise HTTPException(status_code=400, detail="Cannot end the chat as the employee has not sent more than 10 messages")
-        
-        # Complete current session
-        await session.complete_session()
-        
-        # Get all messages from current session
-        current_session_messages = [
-            {
-                "sender": msg.sender.value,
-                "text": msg.text,
-                "timestamp": msg.timestamp.isoformat()
-            }
-            for msg in chat.messages
-        ]
-
-        # Prepare data for LLM backend
-        data = {
-            "chain_id": chain.chain_id,
-            "session_id": session.session_id,
-            "current_context": chain.context,
-            "current_session_messages": current_session_messages
-        }
-        
-        # Call LLM backend to end session and get updated context
-        response = requests.post(f"{llm_add}/end_session", json=data)
-        response_data = response.json()
-        
-        # Update chain context with response from LLM
-        updated_context = response_data.get("updated_context")
-        if updated_context:
-            await chain.update_context(updated_context)
-        
-        # Create new session for tomorrow
-        tomorrow = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=1)
-        scheduled_time = tomorrow.replace(hour=10, minute=0, second=0, microsecond=0)
-        
-        # Create new chat for next session
-        new_chat = Chat(user_id=employee["employee_id"])
-        await new_chat.save()
-        
-        # Create new session
-        new_session = Session(
-            user_id=employee["employee_id"],
-            chat_id=new_chat.chat_id,
-            scheduled_at=scheduled_time,
-            notes=f"Follow-up session for chain {chain.chain_id}"
+        return ChatToChainResponse(
+            chain_id=chain.chain_id,
+            status=chain.status
         )
-        await new_session.save()
-        
-        # Add new session to chain
-        await chain.add_session(new_session.session_id)
-        
-        # Create notification for the employee
-        notification = Notification(
-            employee_id=employee["employee_id"],
-            title="Next Support Session Scheduled",
-            description=f"Your next support session has been scheduled for {scheduled_time.strftime('%Y-%m-%d %H:%M')} UTC."
-        )
-        await notification.save()
-        
-        return {
-            "message": "Session ended successfully",
-            "new_session_id": new_session.session_id,
-            "scheduled_time": scheduled_time,
-            "updated_context": updated_context
-        }
         
     except Exception as e:
         raise HTTPException(
             status_code=500,
-            detail=f"Error ending session: {str(e)}"
+            detail=f"Error retrieving chain for chat: {str(e)}"
         )

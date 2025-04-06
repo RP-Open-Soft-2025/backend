@@ -82,9 +82,12 @@ def select_employees(json_data):
         if df.empty:
             return pd.DataFrame()
 
-        employee_ids = df['employee_id']
-        df = df.drop('employee_id', axis=1)
+        out_emps = df[(df['average_vibe_score'] > 0) & (df['average_vibe_score'] <= 3)]['employee_id'].tolist()
 
+        df = pd.concat([df[df['average_vibe_score'] > 3], df[df['average_vibe_score'] == 0]])
+
+        employee_ids = df['employee_id']
+        df = df.drop(columns = ['average_vibe_score', 'employee_id'], axis=1)
         df.fillna(0, inplace=True)
 
         numerical_cols = df.select_dtypes(include=['int64', 'float64']).columns.tolist()
@@ -138,10 +141,11 @@ def select_employees(json_data):
             'lof_score': scores_lof_norm,
         })
 
-        return result_df.sort_values('anomaly_score', ascending=False)
+        return result_df.sort_values('anomaly_score', ascending=False), out_emps
 
-    results_df = json_anomaly_detection(json_data, contamination=0.1)
-    selected_employees = results_df[results_df['needs_counseling'] == True]['employee_id'].values.tolist()
-    return selected_employees
+    results_df, out_emps = json_anomaly_detection(json_data, contamination=0.1)
+    selected = results_df[results_df['anomaly_score'] >= 0.5]['employee_id'].tolist()
+    final_selected = list(set(selected + out_emps))
+    return final_selected
 
 
