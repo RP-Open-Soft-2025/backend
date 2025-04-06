@@ -893,3 +893,50 @@ async def end_session(
             status_code=500,
             detail=f"Error ending session: {str(e)}"
         )
+
+class ChatToChainResponse(BaseModel):
+    chain_id: str
+    status: ChainStatus
+
+@router.get("/chat-to-chain/{chat_id}", response_model=ChatToChainResponse, tags=["Employee"])
+async def get_chain_from_chat(
+    chat_id: str,
+    employee: dict = Depends(verify_user)
+):
+    """
+    Get the chain ID associated with a chat ID.
+    Verifies that the chat belongs to the requesting user.
+    """
+    try:
+        # Get the chat
+        chat = await Chat.get_chat_by_id(chat_id)
+        if not chat:
+            raise HTTPException(status_code=404, detail="Chat not found")
+        
+        # Verify the employee owns this chat
+        if chat.user_id != employee["employee_id"]:
+            raise HTTPException(
+                status_code=403,
+                detail="You can only access your own chats"
+            )
+        
+        # Find the session that contains this chat
+        session = await Session.find_one({"chat_id": chat_id})
+        if not session:
+            raise HTTPException(status_code=404, detail="No session found for this chat")
+        
+        # Find the chain that contains this session
+        chain = await Chain.find_one({"session_ids": session.session_id})
+        if not chain:
+            raise HTTPException(status_code=404, detail="No chain found for this chat")
+        
+        return ChatToChainResponse(
+            chain_id=chain.chain_id,
+            status=chain.status
+        )
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error retrieving chain for chat: {str(e)}"
+        )
