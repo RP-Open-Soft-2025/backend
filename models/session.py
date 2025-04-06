@@ -23,7 +23,6 @@ class Session(Document):
     cancelled_at: Optional[datetime.datetime] = Field(default=None, description="When the session was cancelled")
     cancelled_by: Optional[str] = Field(default=None, description="Employee ID of who cancelled the session")
     notes: Optional[str] = Field(default=None, description="Any additional notes about the session")
-    chain_id: str = Field(default_factory=lambda: f"CHAIN{uuid.uuid4().hex[:6].upper()}", description="Unique identifier for the chain")
     
     class Settings:
         name = "sessions"
@@ -69,8 +68,6 @@ class Session(Document):
         await self.save()
 
     async def complete_session(self):
-        if self.status != SessionStatus.ACTIVE:
-            raise ValueError("Only active sessions can be completed")
         self.status = SessionStatus.COMPLETED
         self.completed_at = datetime.datetime.now(datetime.timezone.utc)
         self.updated_at = datetime.datetime.now(datetime.timezone.utc)
