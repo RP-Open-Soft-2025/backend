@@ -16,7 +16,7 @@ class ScheduleMeetRequest(BaseModel):
     duration_minutes: int = Field(..., ge=15, le=480, description="Duration in minutes")
     location: Optional[str] = Field(default=None, description="Physical location (if in-person)")
     notes: Optional[str] = Field(default=None, description="Additional notes about the meeting")
-    meeting_link: Optional[str] = Field(default=None, description="Link to the virtual meeting")
+    # meeting_link: Optional[str] = Field(default=None, description="Link to the virtual meeting")
 
 async def verify_admin(token: str = Depends(JWTBearer())):
     """Verify that the user is an admin."""
@@ -79,7 +79,7 @@ async def admin_schedule_meeting(
         scheduled_at=scheduled_datetime,
         duration_minutes=meeting_data.duration_minutes,
         status=MeetStatus.SCHEDULED,
-        meeting_link=meeting_data.meeting_link,
+        # meeting_link=meeting_data.meeting_link,
         location=meeting_data.location,
         notes=meeting_data.notes
     )
@@ -93,7 +93,7 @@ async def admin_schedule_meeting(
                 "id": user.employee_id,
                 "name": user.name
             },
-            "meeting_link": new_meeting.meeting_link,
+            # "meeting_link": new_meeting.meeting_link,
             "meeting_id": new_meeting.meet_id,
             # "meeting_password": new_meeting.meeting_password,
             "scheduled_at": new_meeting.scheduled_at.isoformat(),
@@ -161,7 +161,7 @@ async def hr_schedule_meeting(
     
     # Get HR's meeting link
     hr_user = await Employee.get_by_id(hr["employee_id"])
-    if not hr_user or not hr_user.meeting_link:
+    if not hr_user :
         raise HTTPException(
             status_code=400,
             detail="Please set up your meeting link first before scheduling meetings"
@@ -174,7 +174,7 @@ async def hr_schedule_meeting(
         scheduled_at=scheduled_datetime,
         duration_minutes=meeting_data.duration_minutes,
         status=MeetStatus.SCHEDULED,
-        meeting_link=hr_user.meeting_link,
+        # meeting_link=hr_user.meeting_link,
         location=meeting_data.location,
         notes=meeting_data.notes
     )
@@ -188,7 +188,7 @@ async def hr_schedule_meeting(
                 "id": user.employee_id,
                 "name": user.name
             },
-            "meeting_link": new_meeting.meeting_link,
+            # "meeting_link": new_meeting.meeting_link,
             "scheduled_at": new_meeting.scheduled_at.isoformat(),
             "duration_minutes": new_meeting.duration_minutes,
             "notes": new_meeting.notes
@@ -240,7 +240,7 @@ async def get_organized_meetings(user: dict = Depends(verify_user)):
                 "duration": meeting.duration_minutes,
                 "status": meeting.status,
                 "location": meeting.location,
-                "meetingLink": meeting.meeting_link,
+                # "meetingLink": meeting.meeting_link,
                 "notes": meeting.notes
             }
             formatted_meetings.append(meeting_data)
@@ -283,7 +283,7 @@ async def get_meetings_to_attend(user: dict = Depends(verify_user)):
                 "duration": meeting.duration_minutes,
                 "status": meeting.status,
                 "location": meeting.location,
-                "meetingLink": meeting.meeting_link,
+                # "meetingLink": meeting.meeting_link,
                 "notes": meeting.notes
             }
             formatted_meetings.append(meeting_data)

@@ -26,7 +26,7 @@ class Meet(Document):
     ended_at: Optional[datetime.datetime] = Field(default=None, description="When the meeting ended")
     cancelled_at: Optional[datetime.datetime] = Field(default=None, description="When the meeting was cancelled")
     cancelled_by: Optional[str] = Field(default=None, description="Employee ID of who cancelled the meeting")
-    meeting_link: Optional[str] = Field(default=None, description="Link to the meeting (if virtual)")
+    # meeting_link: Optional[str] = Field(default=None, description="Link to the meeting (if virtual)")
     location: Optional[str] = Field(default=None, description="Physical location of the meeting (if in-person)")
     notes: Optional[str] = Field(default=None, description="Any additional notes about the meeting")
 
@@ -51,7 +51,7 @@ class Meet(Document):
                 "status": "scheduled",
                 "created_at": "2024-03-20T10:00:00Z",
                 "updated_at": "2024-03-20T10:00:00Z",
-                "meeting_link": "https://meet.google.com/abc-defg-hij",
+                # "meeting_link": "https://meet.google.com/abc-defg-hij",
                 "location": "Conference Room A",
                 "notes": "Quarterly review meeting"
             }

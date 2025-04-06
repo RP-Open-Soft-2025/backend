@@ -42,6 +42,7 @@ async def verify_user(token: str = Depends(JWTBearer())):
         )
     return payload
 
+
 class MeetResponse(BaseModel):
     meet_id: str
     with_user_id: str
@@ -107,6 +108,7 @@ class UserDetails(BaseModel):
     upcoming_meets: int = 0
     upcoming_sessions: int = 0
     company_data: CompanyData = Field(default_factory=CompanyData)
+    meeting_link: Optional[str] = None
 
 class ChatMessage(BaseModel):
     sender: str
@@ -186,7 +188,8 @@ async def get_user_profile(
             ),
             upcoming_meets=0,
             upcoming_sessions=0,
-            company_data=employee_data.company_data
+            company_data=employee_data.company_data,
+            meeting_link=employee_data.meeting_link if employee_data.role == "HR" else None
         )
 
         try:
