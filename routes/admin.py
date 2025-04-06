@@ -93,6 +93,13 @@ class BlockUserRequest(BaseModel):
     employee_id: str = Field(..., description="ID of the employee to block/unblock")
     reason: Optional[str] = Field(default=None, description="Reason for blocking the user")
 
+class EscalatedChainResponse(BaseModel):
+    chain_id: str
+    session_ids: List[str]
+    employee_id: str
+    escalation_reason: str
+    escalated_at: datetime
+
 async def verify_admin(token: str = Depends(JWTBearer())):
     """Verify that the user is an admin."""
     if not token or token.lower() == "not authenticated":
@@ -1252,3 +1259,45 @@ async def create_notification(
         created_at=new_notification.created_at,
         status=new_notification.status
     )
+
+@router.get("/escalated-chains", response_model=List[EscalatedChainResponse], tags=["HR"])
+async def get_escalated_chains(hr: Employee = Depends(verify_hr)):
+    """
+    Get all escalated chains in the system.
+    For Admin: Returns all escalated chains
+    For HR: Returns only escalated chains of employees under them
+    """
+    try:
+        # Base query to get escalated chains
+        base_query = {"status": ChainStatus.ESCALATED}
+        
+        # If HR, add employee filter
+        if hr.role == Role.HR:
+            # Get all employees under this HR
+            employees = await Employee.get_employees_by_manager(hr.employee_id)
+            employee_ids = [emp.employee_id for emp in employees]
+            # Add employee filter to base query
+            base_query["employee_id"] = {"$in": employee_ids}
+        
+        # Get chains based on query
+        chains = await Chain.find(base_query).to_list()
+        
+        # Format response
+        response = [
+            EscalatedChainResponse(
+                chain_id=chain.chain_id,
+                session_ids=chain.session_ids,
+                employee_id=chain.employee_id,
+                escalation_reason=chain.escalation_reason,
+                escalated_at=chain.escalated_at
+            )
+            for chain in chains
+        ]
+        
+        return response
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error retrieving escalated chains: {str(e)}"
+        )
