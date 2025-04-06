@@ -14,7 +14,7 @@ from routes.employee import ChatSummary, EmployeeChatsResponse
 from models import Employee, Notification
 from models.employee import Role
 from utils.utils import send_new_session_email, send_escalation_mail
-
+from utils.chain_creation import analyze_employee_report
 router = APIRouter()
 llm_add = Settings().LLM_ADDR
 
@@ -187,7 +187,7 @@ async def send_message(
             await complete_chain(chain.chain_id)
         
         if escalate_the_chain:
-            await escalate_chain(chain.chain_id)
+            await chain.escalate_chain(reason=f"Chain escalated for the employee {employee['employee_id']} by Chatbot")
 
     # count the number of messages in the chat from the employee
     # employee_messages_length = len([msg for msg in chat.messages if msg.sender == SenderType.EMPLOYEE])
@@ -223,11 +223,19 @@ async def initiate_chat(request: ChatStatusRequest, current_user: dict = Depends
     if not chain:
         raise HTTPException(status_code=404, detail="Associated chain not found")
     
-    session.status = SessionStatus.ACTIVE
-    await session.save()
     
     bot_response = "Good Morning. First Question?"
     try:
+        # call the api "/report-exists/"
+        report_exists = requests.get(f"{llm_add}/report-exists/{chain.chain_id}")
+        report_exists = report_exists.json()
+        if not report_exists["exists"]:
+            employee = await Employee.find_one({"employee_id": chain.employee_id})
+            try: 
+                await analyze_employee_report(chain.chain_id, employee)
+            except Exception as e:
+                raise HTTPException(500, detail=f'exception occurred while analyzing employee report: {e}')
+        
         data = {
             "session_id": session.session_id,
             "chain_id": chain.chain_id,
@@ -239,21 +247,22 @@ async def initiate_chat(request: ChatStatusRequest, current_user: dict = Depends
         print('response from llm backend received', response)
         response_data = response.json()
         bot_response = response_data["message"]
+
+        session.status = SessionStatus.ACTIVE
+        await session.save()
             
     except Exception as e:
-        print('exception occurred ram', e)
+        print('exception occurred while initiating chat', e)
         raise HTTPException(500, detail=str(e))
         
     await chat.add_message(SenderType.BOT, bot_response)
-    
-    # Save the chat with updated created_at
-    await chat.save()
     
     # Broadcast status update
     await llm_manager.broadcast_to_chat(request.chatId, {
         "type": "status_update",
         "status": request.status,
-        "timestamp": datetime.now().isoformat()
+        "timestamp": datetime.now().isoformat(),
+        "message": bot_response
     })
     
     return {

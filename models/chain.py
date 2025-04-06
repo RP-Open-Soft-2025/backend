@@ -6,7 +6,7 @@ from beanie import Document
 from pydantic import BaseModel, Field
 import uuid
 from models.chat import Chat
-from models.session import Session
+from models.session import Session, SessionStatus
 from models.employee import Employee
 from utils.utils import send_escalation_mail
 
@@ -26,6 +26,7 @@ class Chain(Document):
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), description="When the chain was last updated")
     completed_at: Optional[datetime] = Field(default=None, description="When the chain was completed")
     escalated_at: Optional[datetime] = Field(default=None, description="When the chain was escalated")
+    escalation_reason: Optional[str] = Field(default=None, description="Reason for chain escalation")
     cancelled_at: Optional[datetime] = Field(default=None, description="When the chain was cancelled")
     notes: Optional[str] = Field(default=None, description="Any additional notes about the chain")
 
@@ -95,19 +96,18 @@ class Chain(Document):
         
         await self.save()
 
-    async def escalate_chain(self):
+    async def escalate_chain(self, reason: str):
         """Mark the chain as escalated to HR"""
         if self.status != ChainStatus.ACTIVE:
             raise ValueError("Only active chains can be escalated")
         self.status = ChainStatus.ESCALATED
         self.escalated_at = datetime.now(timezone.utc)
+        self.escalation_reason = reason
         # update all the chats in this chain to be escalated
         sessions = await Session.find({"session_id": {"$in": self.session_ids}}).to_list()
         for session in sessions:
-            chat = await Chat.get_by_id(session.chat_id)
-            if chat:
-                chat.is_escalated = True
-                await chat.save()
+            session.status = SessionStatus.COMPLETED
+            await session.save()
 
         self.updated_at = datetime.now(timezone.utc)
         

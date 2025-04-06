@@ -14,6 +14,8 @@ import logging
 import uuid
 import os
 
+from utils.chain_creation import create_chain
+
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -76,25 +78,6 @@ async def generate_employee_data_json():
     except Exception as e:
         logger.error(f"Error generating employee_data.json: {str(e)}")
         return False
-
-async def get_employees_in_cooldown():
-    """Get list of employees who have had sessions in the cooldown period."""
-    try:
-        cooldown_date = datetime.now(timezone.utc) - timedelta(days=COOLDOWN_PERIOD_DAYS)
-        print('cooldown date: ', cooldown_date)
-        # Find all sessions completed after the cooldown date
-        recent_sessions = await Session.find({
-            "created_at": {"$gte": cooldown_date}
-        }).to_list()
-        
-        # Extract unique employee IDs from recent sessions
-        employees_in_cooldown = set(session.user_id for session in recent_sessions)
-        
-        logger.info(f"Found {len(employees_in_cooldown)} employees in cooldown period")
-        return employees_in_cooldown
-    except Exception as e:
-        logger.error(f"Error getting employees in cooldown: {str(e)}")
-        return set()
 
 async def create_notification(employee_id: str, title: str, description: str):
     """Create a notification for an employee."""
@@ -200,26 +183,30 @@ async def run_employee_selection():
         # Run the selection process
         selected_employees = select_employees(employee_data)
         
-        # Get employees who are in cooldown period
-        employees_in_cooldown = await get_employees_in_cooldown()
-        
-        # Filter out employees who are in cooldown period
-        eligible_employees = [emp_id for emp_id in selected_employees if emp_id not in employees_in_cooldown]
+        # for every selected employee, check if they have a chain
+        for employee_id in selected_employees:
+            # check if the employee has a chain
+            chain = await Chain.find_one({"employee_id": employee_id, "status": ChainStatus.ACTIVE})
+            if chain:
+                continue
+            
+            chain = await Chain.find_one({"employee_id": employee_id})
+            # get the last session in the chain
+            last_session = await Session.find_one({"session_id": chain.session_ids[-1]})
+
+            # check if the last session's created at is less than 14 days ago
+            if last_session.created_at > datetime.now(timezone.utc) - timedelta(days=14):
+                continue
+
+            await create_chain(
+                employee_id=employee_id,
+                notes="Automatically created counseling chain",
+                scheduled_time=datetime.now(timezone.utc)
+            )
         
         # Log the results
         logger.info(f"Employee selection completed at {datetime.now(timezone.utc)}")
         logger.info(f"Selected {len(selected_employees)} employees for counseling")
-        logger.info(f"{len(employees_in_cooldown)} employees in cooldown period")
-        logger.info(f"{len(eligible_employees)} employees eligible for scheduling")
-        logger.info(f"Eligible employee IDs: {eligible_employees}")
-
-        # Schedule sessions for eligible employees
-        for employee_id in eligible_employees:
-            session = await schedule_session_and_notify(employee_id)
-            if session:
-                logger.info(f"Session scheduled for employee {employee_id}: {session.session_id}")
-            else:
-                logger.error(f"Failed to schedule session for employee {employee_id}")
         
     except Exception as e:
         logger.error(f"Error in employee selection process: {str(e)}")
@@ -236,16 +223,45 @@ async def run_deadline_check():
 
         # check if the scheduled_at is past +2 days 
         for session in pending_sessions:
-            if session.scheduled_at < datetime.now(timezone.utc) + timedelta(days=1):
+            if session.scheduled_at < datetime.now(timezone.utc) - timedelta(days=1):
                 # get the employee details
                 employee = await Employee.find_one({"employee_id": session.user_id})
 
                 # send a notification to the employee
                 await send_deadline_reminder_email(employee.email)
-            elif session.scheduled_at < datetime.now(timezone.utc) + timedelta(days=2):
+            elif session.scheduled_at < datetime.now(timezone.utc) - timedelta(days=2):
                 # send a notification to the employee
                 await send_deadline_over_email(employee.email)
+                # escalate the chain
+                chain = await Chain.find_one({"session_ids": {"$in": [session.session_id]}})
+                if chain:
+                    await chain.escalate_chain(reason=f"Chain escalated because the employee didn't complete the session within the deadline")
         
+        active_sessions = await Session.find({
+            "status": SessionStatus.ACTIVE
+        }).to_list()
+
+        for session in active_sessions:
+            if session.scheduled_at < datetime.now(timezone.utc) - timedelta(days=1):
+                employee = await Employee.find_one({"employee_id": session.user_id})
+                await send_deadline_reminder_email(employee.email)
+            elif session.scheduled_at < datetime.now(timezone.utc) - timedelta(days=2):
+                continue
+            else:
+                chats = await Chat.find({
+                    "chat_id": session.chat_id
+                }).to_list()
+
+                # get the last message from the chat
+                last_message = chats[-1].messages[-1]
+                # if the session deadline is over, but the last message is within an hour don't cancel the session
+                if last_message.timestamp > session.scheduled_at + timedelta(days=2) - timedelta(hours=1):
+                    continue
+                
+                chain = await Chain.find_one({"session_ids": {"$in": [session.session_id]}})
+                if chain:
+                    await chain.escalate_chain(reason=f"Chain escalated because the employee didn't complete the session within the deadline")
+
     except Exception as e:
         logger.error(f"Error in deadline check process: {str(e)}")
         raise e
@@ -267,7 +283,6 @@ async def clear_notifications():
     except Exception as e:
         logger.error(f"Error in clearing notifications: {str(e)}")
         raise e
-
 
 
 def setup_scheduler():

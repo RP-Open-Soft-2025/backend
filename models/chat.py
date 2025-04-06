@@ -33,8 +33,6 @@ class Chat(Document):
     messages: List[Message] = Field(default_factory=list, description="List of messages in the chat")
     mood_score: int = Field(default=-1, ge=-1, le=6, description="Mood score assigned at the end of chat (-1 for unassigned, 1-6 for actual score)")
     chat_mode: ChatMode = Field(default=ChatMode.BOT, description="Current mode of the chat (bot or hr)")
-    is_escalated: bool = Field(default=False, description="Whether the chat has been escalated to HR")
-    escalation_reason: Optional[str] = Field(default=None, description="Reason for chat escalation")
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), description="Timestamp when the chat was created")
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), description="Timestamp when the chat was last updated")
 
@@ -45,7 +43,6 @@ class Chat(Document):
             [("created_at", 1)],
             [("mood_score", 1)],
             [("chat_mode", 1)],
-            [("is_escalated", 1)],
         ]
 
     class Config:
@@ -67,8 +64,6 @@ class Chat(Document):
                 ],
                 "mood_score": 5,
                 "chat_mode": "bot",
-                "is_escalated": False,
-                "escalation_reason": None,
                 "created_at": "2024-03-20T10:30:00Z",
                 "updated_at": "2024-03-20T10:35:00Z"
             }
@@ -103,10 +98,3 @@ class Chat(Document):
         self.chat_mode = mode
         self.updated_at = datetime.now(timezone.utc)
         await self.save()
-
-    async def escalate_chat(self, reason: str):
-        self.is_escalated = True
-        self.escalation_reason = reason
-        self.chat_mode = ChatMode.HR
-        self.updated_at = datetime.now(timezone.utc)
-        await self.save() 

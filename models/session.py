@@ -11,7 +11,6 @@ class SessionStatus(str, Enum):
     COMPLETED = "completed"  # Has attended
     CANCELLED = "cancelled"  # Session was cancelled
 
-
 class Session(Document):
     session_id: str = Field(default_factory=lambda: f"SESS{uuid.uuid4().hex[:6].upper()}", description="Unique identifier for the session")
     user_id: str = Field(..., description="Employee ID of the user assigned to this session")
