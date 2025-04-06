@@ -227,9 +227,9 @@ async def initiate_chat(request: ChatStatusRequest, current_user: dict = Depends
     bot_response = "Good Morning. First Question?"
     try:
         # call the api "/report-exists/"
-        report_exists = requests.get(f"{llm_add}/report-exists/{chain.chain_id}")
+        report_exists = requests.get(f"{llm_add}/report/report-exists/{chain.chain_id}")
         report_exists = report_exists.json()
-        if not report_exists["exists"]:
+        if not report_exists.get("exists"):
             employee = await Employee.find_one({"employee_id": chain.employee_id})
             try: 
                 await analyze_employee_report(chain.chain_id, employee)
@@ -242,7 +242,7 @@ async def initiate_chat(request: ChatStatusRequest, current_user: dict = Depends
             "employee_id": chat.user_id,
             "context": chain.context  # Send context only during initiation
         }
-        print('try sending llm backend a request')
+        print('try sending llm backend a request. Data: ', data)
         response = requests.post(f"{llm_add}/chatbot/start_session", json=data, timeout=300)
         print('response from llm backend received', response)
         response_data = response.json()
