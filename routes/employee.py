@@ -35,12 +35,13 @@ async def verify_employee(token: str = Depends(JWTBearer())):
 async def verify_user(token: str = Depends(JWTBearer())):
     """Verify that the user is an employee."""
     payload = decode_jwt(token)
-    if not payload:
+    if not payload :
         raise HTTPException(
             status_code=403,
-            detail="Only authenticated users can access this endpoint"
+            detail="Not authorized"
         )
     return payload
+
 
 class MeetResponse(BaseModel):
     meet_id: str
@@ -188,7 +189,7 @@ async def get_user_profile(
             upcoming_meets=0,
             upcoming_sessions=0,
             company_data=employee_data.company_data,
-            meeting_link=employee_data.meeting_link
+            meeting_link=employee_data.meeting_link if employee_data.role == "HR" else None
         )
 
         try:
