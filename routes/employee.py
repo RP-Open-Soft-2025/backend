@@ -32,6 +32,16 @@ async def verify_employee(token: str = Depends(JWTBearer())):
         )
     return payload
 
+async def verify_user(token: str = Depends(JWTBearer())):
+    """Verify that the user is an employee."""
+    payload = decode_jwt(token)
+    if not payload:
+        raise HTTPException(
+            status_code=403,
+            detail="Only authenticated users can access this endpoint"
+        )
+    return payload
+
 class MeetResponse(BaseModel):
     meet_id: str
     with_user_id: str
@@ -142,7 +152,7 @@ class EndSessionRequest(BaseModel):
 
 @router.get("/profile", response_model=UserDetails, tags=["Employee"])
 async def get_user_profile(
-    employee: dict = Depends(verify_employee)
+    employee: dict = Depends(verify_user)
 ):
     """
     Get detailed information about the current user including:
