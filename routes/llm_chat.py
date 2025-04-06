@@ -190,14 +190,15 @@ async def send_message(
             await escalate_chain(chain.chain_id)
 
     # count the number of messages in the chat from the employee
-    employee_messages_length = len([msg for msg in chat.messages if msg.sender == SenderType.EMPLOYEE])
+    # employee_messages_length = len([msg for msg in chat.messages if msg.sender == SenderType.EMPLOYEE])
     
     return {
         "message": bot_response,
         "chatId": chat.chat_id,
         "sessionStatus": session.status,
         "chainStatus": chain.status,
-        "can_end_chat": employee_messages_length > 10,
+        # "can_end_chat": employee_messages_length > 10,
+        "can_end_chat": True,
         "ended": complete_the_chain or escalate_the_chain
     }
 
@@ -234,7 +235,7 @@ async def initiate_chat(request: ChatStatusRequest, current_user: dict = Depends
             "context": chain.context  # Send context only during initiation
         }
         print('try sending llm backend a request')
-        response = requests.post(f"{llm_add}/chatbot/start_session", json=data)
+        response = requests.post(f"{llm_add}/chatbot/start_session", json=data, timeout=300)
         print('response from llm backend received', response)
         response_data = response.json()
         bot_response = response_data["message"]
