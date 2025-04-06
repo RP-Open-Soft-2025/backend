@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from pydantic import BaseModel, Field
 from models.employee import Employee, Role
 from models.meet import Meet, MeetStatus
@@ -57,7 +57,7 @@ async def admin_schedule_meeting(
         )
     
     # Check if the meeting is in the past
-    if scheduled_datetime < datetime.utcnow():
+    if scheduled_datetime < datetime.now(timezone.utc):
         raise HTTPException(
             status_code=400,
             detail="Cannot schedule meetings in the past"
@@ -152,7 +152,7 @@ async def hr_schedule_meeting(
         )
     
     # Check if the meeting is in the past
-    if scheduled_datetime < datetime.utcnow():
+    if scheduled_datetime < datetime.now(timezone.utc):
         raise HTTPException(
             status_code=400,
             detail="Cannot schedule meetings in the past"

@@ -7,7 +7,7 @@ from models.employee import Employee
 from models.chat import Chat
 from models.notification import Notification, NotificationStatus
 from models.chain import Chain, ChainStatus
-from utils.utils import send_new_session_email
+from utils.utils import send_new_session_email, send_deadline_reminder_email, send_deadline_over_email
 import json
 from datetime import datetime, timedelta, timezone
 import logging
@@ -223,30 +223,87 @@ async def run_employee_selection():
         
     except Exception as e:
         logger.error(f"Error in employee selection process: {str(e)}")
+        raise e
+
+async def run_deadline_check():
+    """Run the deadline check process."""
+    try:
+        # Get all sessions that are pending and have a scheduled_at date in the past
+        pending_sessions = await Session.find({
+            "status": SessionStatus.PENDING,
+            "scheduled_at": {"$lte": datetime.now(timezone.utc)}
+        }).to_list()
+
+        # check if the scheduled_at is past +2 days 
+        for session in pending_sessions:
+            if session.scheduled_at < datetime.now(timezone.utc) + timedelta(days=1):
+                # get the employee details
+                employee = await Employee.find_one({"employee_id": session.user_id})
+
+                # send a notification to the employee
+                await send_deadline_reminder_email(employee.email)
+            elif session.scheduled_at < datetime.now(timezone.utc) + timedelta(days=2):
+                # send a notification to the employee
+                await send_deadline_over_email(employee.email)
+        
+    except Exception as e:
+        logger.error(f"Error in deadline check process: {str(e)}")
+        raise e
+
+# clear notifications which are older than 10 days
+async def clear_notifications():
+    """Clear notifications which are older than 10 days."""
+    try:
+        # Get all notifications older than 10 days
+        notifications = await Notification.find({
+            "created_at": {"$lte": datetime.now(timezone.utc) - timedelta(days=10)}
+        }).to_list()
+
+        # delete the notifications
+        for notification in notifications:
+            await notification.delete()
+
+        logger.info(f"Cleared {len(notifications)} notifications")
+    except Exception as e:
+        logger.error(f"Error in clearing notifications: {str(e)}")
+        raise e
+
+
 
 def setup_scheduler():
     """Set up the scheduler to run employee selection."""
-    scheduler = AsyncIOScheduler()
-    
-    # # For testing: Run every 15 seconds
-    # scheduler.add_job(
-    #     run_employee_selection,
-    #     # trigger=IntervalTrigger(minutes=2),
-    #     trigger=IntervalTrigger(seconds=15),
-    #     id='employee_selection',
-    #     name='Minute Employee Selection',
-    #     replace_existing=True
-    # )
+    try:
+        scheduler = AsyncIOScheduler()
     
     # For production: Run at 9:00 AM every day
-    scheduler.add_job(
-        run_employee_selection,
-        trigger=CronTrigger(hour=9, minute=0),
-        id='employee_selection',
-        name='Daily Employee Selection',
-        replace_existing=True
-    )
+        scheduler.add_job(
+            run_employee_selection,
+            trigger=CronTrigger(hour=9, minute=0),
+            id='employee_selection',
+            name='Daily Employee Selection',
+            replace_existing=True
+        )
+
+        # For production: Run at 9:00 AM every day
+        scheduler.add_job(
+            run_deadline_check,
+            trigger=CronTrigger(hour=9, minute=0),
+            id='deadline_check',
+            name='Daily Deadline Check',
+            replace_existing=True
+        )
+
+        # clear notifications which are older than 10 days at 12:00 AM every day
+        scheduler.add_job(
+            clear_notifications,
+            trigger=CronTrigger(hour=0, minute=0),
+            id='clear_notifications',
+            name='Clear Notifications',
+            replace_existing=True
+        )
     
-    scheduler.start()
-    logger.info("Scheduler started successfully")
+        scheduler.start()
+        logger.info("Scheduler started successfully")
+    except Exception as e:
+        logger.error(f"Error in setting up scheduler: {str(e)}")
     return scheduler 

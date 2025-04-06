@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter, HTTPException, Depends
 from typing import List, Optional
-import datetime
+from datetime import timezone, datetime, timedelta
 from pydantic import BaseModel, EmailStr, Field
 from models.session import Session, SessionStatus
 from models.employee import Employee, Role
@@ -16,7 +16,14 @@ from models.notification import Notification, NotificationStatus
 import random
 from utils.utils import send_new_employee_email
 import logging
+from config.config import Settings
+from utils.utils import send_new_session_email
+
+
+import requests
+
 router = APIRouter()
+llm_add = Settings().LLM_ADDR
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 logger = logging.getLogger(__name__)
 
@@ -33,7 +40,7 @@ class DeleteUserRequest(BaseModel):
     reason: Optional[str] = Field(default=None, description="Reason for deleting the user")
 
 class CreateSessionRequest(BaseModel):
-    scheduled_at: datetime.datetime = Field(..., description="When the session is scheduled for")
+    scheduled_at: datetime = Field(..., description="When the session is scheduled for")
     notes: Optional[str] = Field(default=None, description="Any additional notes about the session")
 
 class SessionResponse(BaseModel):
@@ -41,7 +48,7 @@ class SessionResponse(BaseModel):
     employee_id: str
     chat_id: str
     status: str
-    scheduled_at: datetime.datetime
+    scheduled_at: datetime
 
 class ReassignHrRequest(BaseModel):
     newHrId: str = Field(..., description="ID of the new HR to assign")
@@ -56,7 +63,7 @@ class NotificationResponse(BaseModel):
     employee_id: str
     title: str
     description: str
-    created_at: datetime.datetime
+    created_at: datetime
     status: NotificationStatus
 
 class ChainResponse(BaseModel):
@@ -65,17 +72,17 @@ class ChainResponse(BaseModel):
     session_ids: List[str]
     status: ChainStatus
     context: Optional[str] = None
-    created_at: datetime.datetime
-    updated_at: datetime.datetime
-    completed_at: Optional[datetime.datetime] = None
-    escalated_at: Optional[datetime.datetime] = None
-    cancelled_at: Optional[datetime.datetime] = None
+    created_at: datetime
+    updated_at: datetime
+    completed_at: Optional[datetime] = None
+    escalated_at: Optional[datetime] = None
+    cancelled_at: Optional[datetime] = None
     notes: Optional[str] = None
 
 class CreateChainRequest(BaseModel):
     employee_id: str = Field(..., description="ID of the employee to create chain for")
     notes: Optional[str] = Field(default=None, description="Any additional notes about the chain")
-    scheduled_time: Optional[datetime.datetime] = Field(
+    scheduled_time: Optional[datetime] = Field(
         default=None,
         description="When to schedule the first session. Defaults to tomorrow at 10 AM."
     )
@@ -109,6 +116,53 @@ async def verify_hr(token: str = Depends(JWTBearer())):
         raise HTTPException(status_code=403, detail="Only Admin / HR personnel can access this endpoint")
     
     return hr_user
+
+# add an endpoint that returns, just the number of total employees, active employees, total admins, totals hrs, total employees, total sessions, completed sessions, active sessions, pendign sessions, total meetings
+@router.get("/stats", tags=["Admin"])
+async def get_system_stats(admin: dict = Depends(verify_admin)):
+    """
+    Get system-wide statistics including counts of employees, sessions, and meetings.
+    Only administrators can access this endpoint.
+    """
+    try:
+        # Employee stats
+
+        total_employees = len(await Employee.find().to_list())
+        active_employees = len(await Employee.find({"is_active": True}).to_list())
+        total_admins = len(await Employee.find({"role": Role.ADMIN}).to_list())
+        total_hrs = len(await Employee.find({"role": Role.HR}).to_list())
+
+        # Session stats
+        total_sessions = len(await Session.find().to_list())
+        completed_sessions = len(await Session.find({"status": SessionStatus.COMPLETED}).to_list())
+        active_sessions = len(await Session.find({"status": SessionStatus.ACTIVE}).to_list())
+        pending_sessions = len(await Session.find({"status": SessionStatus.PENDING}).to_list())
+
+        # Meeting stats
+        total_meetings = len(await Meet.find().to_list())
+
+        return {
+            "employee_stats": {
+                "total_employees": total_employees,
+                "active_employees": active_employees,
+                "total_admins": total_admins,
+                "total_hrs": total_hrs
+            },
+            "session_stats": {
+                "total_sessions": total_sessions,
+                "completed_sessions": completed_sessions,
+                "active_sessions": active_sessions,
+                "pending_sessions": pending_sessions
+            },
+            "meeting_stats": {
+                "total_meetings": total_meetings
+            }
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error fetching system statistics: {str(e)}"
+        )
 
 @router.get("/missing/{role}", tags=["Admin"])
 async def get_missing_users(role: Role, admin: dict = Depends(verify_admin)):
@@ -182,8 +236,6 @@ async def create_user(
     new_password=f"password{random_number}"
     hashed_password = pwd_context.hash(new_password)
     
-
-
     # Create new employee
     new_employee = Employee(
         employee_id=user_data.employee_id,
@@ -192,7 +244,7 @@ async def create_user(
         password=hashed_password,
         role=user_data.role,
         manager_id=user_data.manager_id,
-        last_ping=datetime.datetime.now()
+        last_ping=datetime.now(timezone.utc)
     )
     
     try:
@@ -237,7 +289,7 @@ async def delete_user(
         )
 
     # Prevent deleting the current admin
-    if employee.employee_id == admin["employee_id"]:
+    if employee.employee_id == admin.employee_id:
         raise HTTPException(
             status_code=400,
             detail="Cannot delete your own account"
@@ -248,7 +300,7 @@ async def delete_user(
         await employee.delete()
         return {
             "message": f"Employee {delete_data.employee_id} deleted successfully",
-            "deleted_by": admin["employee_id"],
+            "deleted_by": admin.employee_id,
             "reason": delete_data.reason
         }
     except Exception as e:
@@ -421,8 +473,8 @@ async def block_user(
 
     # Block the employee
     employee.is_blocked = True
-    employee.blocked_at = datetime.datetime.now(datetime.UTC)
-    employee.blocked_by = hr["employee_id"]
+    employee.blocked_at = datetime.now(timezone.utc)
+    employee.blocked_by = hr.employee_id
     employee.blocked_reason = block_data.reason
 
     try:
@@ -797,7 +849,7 @@ async def complete_session(
     try:
         # Update session status
         session.status = SessionStatus.COMPLETED
-        session.completed_at = datetime.datetime.now(datetime.UTC)
+        session.completed_at = datetime.now(timezone.utc)
         session.notes = session_data.notes
         await session.save()
 
@@ -1126,6 +1178,10 @@ async def create_chain(
     Create a new chain for an employee and schedule their first session.
     Only Admin / HR personnel can access this endpoint.
     """
+    chain = ""
+    session = ""
+    chat = ""
+    notification = ""
     try:
         # Verify the employee exists
         employee = await Employee.get_by_id(request.employee_id)
@@ -1154,7 +1210,7 @@ async def create_chain(
         
         # Set default scheduled time to tomorrow at 10 AM if not provided
         if not request.scheduled_time:
-            tomorrow = datetime.datetime.now(datetime.UTC) + datetime.timedelta(days=1)
+            tomorrow = datetime.now(timezone.utc) + timedelta(days=1)
             request.scheduled_time = tomorrow.replace(hour=10, minute=0, second=0, microsecond=0)
         
         # Create a new chat for the session
@@ -1186,10 +1242,47 @@ async def create_chain(
             description=f"A new support session has been scheduled for you on {request.scheduled_time.strftime('%Y-%m-%d %H:%M')} UTC."
         )
         await notification.save()
+
+        report_data = {
+            "employee_data": {
+                "employee_id": employee.employee_id,
+                "company_data": employee.company_data.model_dump(mode='json')
+            }
+        }
+
+        # call the api, LLM_ADDR/report/analyze
+        response = requests.post(f"{llm_add}/report/analyze", json=report_data)
+        if response.status_code != 200:
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to generate employee report"
+            )
         
+        report = response.json()
+        print(report)
+
+        # mail that a session has been created
+        await send_new_session_email(
+            to_email=employee.email,
+            sub=f"A new support session has been scheduled for you on {request.scheduled_time.strftime('%Y-%m-%d %H:%M')} UTC."
+        )
+
         return chain
         
     except Exception as e:
+        # delete the chain if it is created
+        if chain:
+            await chain.delete()
+        # delete the session if it is created
+        if session:
+            await session.delete()
+        # delete the chat if it is created
+        if chat:
+            await chat.delete()
+        # delete the notification if it is created
+        if notification:
+            await notification.delete()
+        
         raise HTTPException(
             status_code=500,
             detail=f"Error creating chain: {str(e)}"

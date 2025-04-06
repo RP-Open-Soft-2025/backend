@@ -1,5 +1,5 @@
 from typing import List, Optional
-import datetime
+from datetime import datetime, timezone, timedelta
 from enum import Enum
 from beanie import Document
 from pydantic import BaseModel, Field
@@ -23,7 +23,7 @@ class SentimentType(str, Enum):
     VERY_POSITIVE = "very_positive"
 
 class Message(BaseModel):
-    timestamp: datetime.datetime = Field(default_factory=lambda: datetime.datetime.now(datetime.UTC), description="Timestamp of the message")
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), description="Timestamp of the message")
     sender_type: SenderType = Field(..., description="Type of the message sender (bot, employee, or hr)")
     text: str = Field(..., description="Content of the message")
 
@@ -35,8 +35,8 @@ class Chat(Document):
     chat_mode: ChatMode = Field(default=ChatMode.BOT, description="Current mode of the chat (bot or hr)")
     is_escalated: bool = Field(default=False, description="Whether the chat has been escalated to HR")
     escalation_reason: Optional[str] = Field(default=None, description="Reason for chat escalation")
-    created_at: datetime.datetime = Field(default_factory=lambda: datetime.datetime.now(datetime.UTC), description="Timestamp when the chat was created")
-    updated_at: datetime.datetime = Field(default_factory=lambda: datetime.datetime.now(datetime.UTC), description="Timestamp when the chat was last updated")
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), description="Timestamp when the chat was created")
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), description="Timestamp when the chat was last updated")
 
     class Settings:
         name = "chats"
@@ -89,24 +89,24 @@ class Chat(Document):
     async def add_message(self, sender_type: SenderType, text: str):
         message = Message(sender_type=sender_type, text=text)
         self.messages.append(message)
-        self.updated_at = datetime.datetime.now(datetime.UTC)
+        self.updated_at = datetime.now(timezone.utc)
         await self.save()
 
     async def set_mood_score(self, score: int):
         if not -1 <= score <= 6:
             raise ValueError("Mood score must be between -1 and 6")
         self.mood_score = score
-        self.updated_at = datetime.datetime.now(datetime.UTC)
+        self.updated_at = datetime.now(timezone.utc)
         await self.save()
 
     async def update_chat_mode(self, mode: ChatMode):
         self.chat_mode = mode
-        self.updated_at = datetime.datetime.now(datetime.UTC)
+        self.updated_at = datetime.now(timezone.utc)
         await self.save()
 
     async def escalate_chat(self, reason: str):
         self.is_escalated = True
         self.escalation_reason = reason
         self.chat_mode = ChatMode.HR
-        self.updated_at = datetime.datetime.now(datetime.UTC)
+        self.updated_at = datetime.now(timezone.utc)
         await self.save() 
