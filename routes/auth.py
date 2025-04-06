@@ -26,6 +26,9 @@ async def user_login(user_credentials: EmployeeSignIn = Body(...)):
     if user_exists:
         if user_exists.role == "admin" or user_exists.role == "hr":
             raise HTTPException(status_code=403, detail="Please use admin login endpoint")
+
+        if user_exists.is_blocked:
+            raise HTTPException(status_code=403, detail="Your account has been blocked. Please contact your administrator.")
             
         password = hash_helper.verify(user_credentials.password, user_exists.password)
         if password:

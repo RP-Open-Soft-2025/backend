@@ -14,9 +14,12 @@ import datetime
 from collections import defaultdict
 from models.notification import Notification, NotificationStatus
 from bson import ObjectId
-
+import requests
+from config.config import Settings
 
 router = APIRouter()
+
+llm_add = Settings().LLM_ADDR
 
 
 async def verify_employee(token: str = Depends(JWTBearer())):
@@ -132,18 +135,14 @@ class ChainMessagesResponse(BaseModel):
     chat_mode: str
     is_escalated: bool = False
 
-async def verify_if_user(token: str = Depends(JWTBearer())):
-    """Verify that the user is an employee."""
-    payload = decode_jwt(token)
-    if not payload:
-        raise HTTPException(
-            status_code=403,
-            detail="Only authenticated user can access this route"
-        )
-    return payload
+
+class EndSessionRequest(BaseModel):
+    chat_id: str = Field(..., description="ID of the current chat")
+    chain_id: str = Field(..., description="ID of the chain")
+
 @router.get("/profile", response_model=UserDetails, tags=["Employee"])
 async def get_user_profile(
-    employee: dict = Depends(verify_if_user)
+    employee: dict = Depends(verify_employee)
 ):
     """
     Get detailed information about the current user including:
@@ -206,7 +205,7 @@ async def get_user_profile(
                     )
 
                 # Find the most recently updated chat
-                latest_chat = max(chats, key=lambda x: x.updated_at.replace(tzinfo=datetime.UTC) if hasattr(x, 'updated_at') else datetime.datetime.min.replace(tzinfo=datetime.UTC))
+                latest_chat = max(chats, key=lambda x: x.updated_at.replace(tzinfo=datetime.timezone.utc) if hasattr(x, 'updated_at') else datetime.datetime.min.replace(tzinfo=datetime.timezone.utc))
                 
                 if latest_chat:
                     last_message = None
@@ -217,17 +216,17 @@ async def get_user_profile(
                         if hasattr(last_message_obj, 'text'):
                             last_message = last_message_obj.text
                         if hasattr(last_message_obj, 'timestamp'):
-                            last_message_time = last_message_obj.timestamp.replace(tzinfo=datetime.UTC)
+                            last_message_time = last_message_obj.timestamp.replace(tzinfo=datetime.timezone.utc)
                     
                     response.chat_summary = ChatSummary(
                         chat_id=latest_chat.chat_id,
                         last_message=last_message,
-                        last_message_time=last_message_time or latest_chat.updated_at.replace(tzinfo=datetime.UTC),
+                        last_message_time=last_message_time or latest_chat.updated_at.replace(tzinfo=datetime.timezone.utc),
                         unread_count=latest_chat.unread_count if hasattr(latest_chat, 'unread_count') else 0,
                         total_messages=len(latest_chat.messages),
                         chat_mode=latest_chat.chat_mode.value if hasattr(latest_chat, 'chat_mode') else "BOT",
                         is_escalated=latest_chat.is_escalated if hasattr(latest_chat, 'is_escalated') else False,
-                        created_at=latest_chat.created_at.replace(tzinfo=datetime.UTC)
+                        created_at=latest_chat.created_at.replace(tzinfo=datetime.timezone.utc)
                     )
                         
         except Exception as e:
@@ -240,7 +239,7 @@ async def get_user_profile(
                     {"user_id": employee["employee_id"]},
                     {"with_user_id": employee["employee_id"]}
                 ],
-                "scheduled_at": {"$gt": datetime.datetime.now(datetime.UTC)},
+                "scheduled_at": {"$gt": datetime.datetime.now(datetime.timezone.utc)},
                 "status": MeetStatus.SCHEDULED
             }).count()
         except Exception as e:
@@ -250,7 +249,7 @@ async def get_user_profile(
             # Get upcoming sessions count
             response.upcoming_sessions = await Session.find({
                 "user_id": employee["employee_id"],
-                "scheduled_at": {"$gt": datetime.datetime.now(datetime.UTC)},
+                "scheduled_at": {"$gt": datetime.datetime.now(datetime.timezone.utc)},
                 "status": SessionStatus.PENDING
             }).count()
         except Exception as e:
@@ -293,7 +292,7 @@ async def get_scheduled_meets(
             # print('employee_id: ',employee["employee_id"])
             organizer_meets = await Meet.find({
                 "user_id": employee["employee_id"],
-                # "scheduled_at": {"$gt": datetime.datetime.now(datetime.UTC)},
+                # "scheduled_at": {"$gt": datetime.datetime.now(datetime.timezone.utc)},
                 "status": MeetStatus.SCHEDULED
             }).to_list()
             print(organizer_meets)
@@ -304,7 +303,7 @@ async def get_scheduled_meets(
         try:
             participant_meets = await Meet.find({
                 "with_user_id": employee["employee_id"],
-                # "scheduled_at": {"$gt": datetime.datetime.now(datetime.UTC)},  
+                # "scheduled_at": {"$gt": datetime.datetime.now(datetime.timezone.utc)},  
                 "status": MeetStatus.SCHEDULED
             }).to_list()
         except Exception as e:
@@ -333,7 +332,7 @@ async def get_scheduled_sessions(
     try:
         sessions = await Session.find({
             "user_id": employee["employee_id"],
-            # "scheduled_at": {"$gt": datetime.datetime.now(datetime.UTC)},
+            # "scheduled_at": {"$gt": datetime.datetime.now(datetime.timezone.utc)},
             "status": {"$in": [SessionStatus.PENDING, SessionStatus.ACTIVE]}
         }).to_list()
 
@@ -476,15 +475,6 @@ async def get_chat_messages(
             ))
     except Exception as e:
         print(f"Error processing messages: {str(e)}")
-        import traceback
-        print(traceback.format_exc())
-    
-    # Broadcast that the employee is viewing the chat
-    await employee_chat_manager.broadcast_to_employee(employee["employee_id"], {
-        "type": "chat_viewed",
-        "chat_id": chat_id,
-        "timestamp": datetime.datetime.now().isoformat()
-    })
     
     return ChatMessagesResponse(
         chat_id=chat.chat_id,
@@ -698,7 +688,7 @@ async def get_chain_messages(
         # Process each session and its chat
         session_groups = []
         total_messages = 0
-        last_updated = datetime.datetime.min.replace(tzinfo=datetime.UTC)
+        last_updated = datetime.datetime.min.replace(tzinfo=datetime.timezone.utc)
         
         for session in sessions:
             # Get chat for this session
@@ -710,7 +700,7 @@ async def get_chain_messages(
                     # Ensure timestamp is timezone-aware
                     msg_timestamp = msg.timestamp
                     if msg_timestamp and msg_timestamp.tzinfo is None:
-                        msg_timestamp = msg_timestamp.replace(tzinfo=datetime.UTC)
+                        msg_timestamp = msg_timestamp.replace(tzinfo=datetime.timezone.utc)
                     
                     messages.append(ChatMessage(
                         sender=msg.sender_type.value,
@@ -725,7 +715,7 @@ async def get_chain_messages(
                 if messages:
                     latest_msg_time = max(
                         (msg.timestamp for msg in messages if msg.timestamp is not None),
-                        default=datetime.datetime.min.replace(tzinfo=datetime.UTC)
+                        default=datetime.datetime.min.replace(tzinfo=datetime.timezone.utc)
                     )
                     if latest_msg_time > last_updated:
                         last_updated = latest_msg_time
@@ -744,7 +734,7 @@ async def get_chain_messages(
         session_groups.sort(
             key=lambda x: min(
                 (msg.timestamp for msg in x.messages if msg.timestamp is not None),
-                default=datetime.datetime.min.replace(tzinfo=datetime.UTC)
+                default=datetime.datetime.min.replace(tzinfo=datetime.timezone.utc)
             )
         )
         
@@ -762,4 +752,114 @@ async def get_chain_messages(
         raise HTTPException(
             status_code=500,
             detail=f"Error retrieving chain messages: {str(e)}"
+        )
+
+@router.post("/end-session", tags=["LLM"])
+async def end_session(
+    request: EndSessionRequest,
+    employee: dict = Depends(verify_employee)
+):
+    """
+    End the current session, update chain context, and create a new session.
+    """
+    try:
+        # Get current chat
+        chat = await Chat.get_chat_by_id(request.chat_id)
+        if not chat:
+            raise HTTPException(status_code=404, detail="Chat not found")
+        
+        # Verify employee owns this chat
+        if chat.user_id != employee["employee_id"]:
+            raise HTTPException(status_code=403, detail="Not authorized to access this chat")
+        
+        # Get current session
+        session = await Session.find_one({"chat_id": chat.chat_id})
+        if not session:
+            raise HTTPException(status_code=404, detail="Associated session not found")
+        
+        # Get associated chain
+        chain = await Chain.get_by_id(request.chain_id)
+        if not chain:
+            raise HTTPException(status_code=404, detail="Chain not found")
+        
+        # Verify session belongs to chain
+        if session.session_id not in chain.session_ids:
+            raise HTTPException(status_code=400, detail="Session does not belong to this chain")
+        
+        # count the number of messages in the current session from the employee
+        employee_messages_length = len([msg for msg in chat.messages if msg.sender == SenderType.EMPLOYEE])
+
+        # if the number of employee messages is greater than 10, end the chat
+        if employee_messages_length < 10:
+            raise HTTPException(status_code=400, detail="Cannot end the chat as the employee has not sent more than 10 messages")
+        
+        # Complete current session
+        await session.complete_session()
+        
+        # Get all messages from current session
+        current_session_messages = [
+            {
+                "sender": msg.sender.value,
+                "text": msg.text,
+                "timestamp": msg.timestamp.isoformat()
+            }
+            for msg in chat.messages
+        ]
+
+        # Prepare data for LLM backend
+        data = {
+            "chain_id": chain.chain_id,
+            "session_id": session.session_id,
+            "current_context": chain.context,
+            "current_session_messages": current_session_messages
+        }
+        
+        # Call LLM backend to end session and get updated context
+        response = requests.post(f"{llm_add}/end_session", json=data)
+        response_data = response.json()
+        
+        # Update chain context with response from LLM
+        updated_context = response_data.get("updated_context")
+        if updated_context:
+            await chain.update_context(updated_context)
+        
+        # Create new session for tomorrow
+        tomorrow = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=1)
+        scheduled_time = tomorrow.replace(hour=10, minute=0, second=0, microsecond=0)
+        
+        # Create new chat for next session
+        new_chat = Chat(user_id=employee["employee_id"])
+        await new_chat.save()
+        
+        # Create new session
+        new_session = Session(
+            user_id=employee["employee_id"],
+            chat_id=new_chat.chat_id,
+            scheduled_at=scheduled_time,
+            notes=f"Follow-up session for chain {chain.chain_id}"
+        )
+        await new_session.save()
+        
+        # Add new session to chain
+        await chain.add_session(new_session.session_id)
+        
+        # Create notification for the employee
+        notification = Notification(
+            employee_id=employee["employee_id"],
+            title="Next Support Session Scheduled",
+            description=f"Your next support session has been scheduled for {scheduled_time.strftime('%Y-%m-%d %H:%M')} UTC."
+        )
+        await notification.save()
+        
+        return {
+            "message": "Session ended successfully",
+            "new_session_id": new_session.session_id,
+            "scheduled_time": scheduled_time,
+            "updated_context": updated_context
+        }
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error ending session: {str(e)}"
         )

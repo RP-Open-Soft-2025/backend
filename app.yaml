@@ -14,6 +14,6 @@ env_variables:
     sender_password: "ipdtsisbfvjbrmkp"
     email_template: "https://employee-frontend-ten-puce.vercel.app/reset-password/"
     admin_email_template: "https://opensoft-gc-admin.vercel.app/reset-password/"
-    LLM_ADDR: "http://34.47.173.216/"
+    LLM_ADDR: "http://35.244.56.159"
 manual_scaling:
     instances: 2
