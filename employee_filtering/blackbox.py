@@ -5,8 +5,8 @@ from sklearn.neighbors import LocalOutlierFactor
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.compose import ColumnTransformer
 from collections import Counter
-from scipy import stats
-import json
+# from scipy import stats
+# import json
 
 def select_employees(json_data):
     

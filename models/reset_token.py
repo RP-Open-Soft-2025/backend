@@ -1,5 +1,5 @@
 from beanie import Document
-from datetime import datetime, UTC, timedelta
+from datetime import datetime, timezone, timedelta
 from typing import Optional
 import uuid
 
@@ -16,10 +16,17 @@ class ResetToken(Document):
         
     @classmethod
     async def create_token(cls, email: str, is_first_login: bool = False, is_admin: bool = False):
+        # Invalidate any existing tokens for this email
+        existing_tokens = await cls.find({"email": email, "used": False}).to_list()
+        for token in existing_tokens:
+            token.used = True
+            await token.save()
+        
+        # Create new token
         token = await cls(
             token=str(uuid.uuid4()),
             email=email,
-            timestamp=datetime.now(UTC),
+            timestamp=datetime.now(timezone.utc),
             is_first_login=is_first_login,
             is_admin=is_admin
         ).insert()
@@ -56,14 +63,14 @@ class ResetToken(Document):
     @classmethod
     async def cleanup_expired_tokens(cls, max_age_minutes: int = 5):
         """Delete all expired tokens from the database."""
-        cutoff_time = datetime.now(UTC) - timedelta(minutes=max_age_minutes)
+        cutoff_time = datetime.now(timezone.utc) - timedelta(minutes=max_age_minutes)
         result = await cls.find({"timestamp": {"$lt": cutoff_time}}).delete()
         return result
     
     @classmethod
     async def has_recent_request(cls, email: str, cooldown_minutes: int = 2):
         """Check if there was a recent reset request for this email."""
-        cutoff_time = datetime.now(UTC) - timedelta(minutes=cooldown_minutes)
+        cutoff_time = datetime.now(timezone.utc) - timedelta(minutes=cooldown_minutes)
         recent_token = await cls.find_one({
             "email": email,
             "timestamp": {"$gt": cutoff_time}

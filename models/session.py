@@ -11,20 +11,18 @@ class SessionStatus(str, Enum):
     COMPLETED = "completed"  # Has attended
     CANCELLED = "cancelled"  # Session was cancelled
 
-
 class Session(Document):
     session_id: str = Field(default_factory=lambda: f"SESS{uuid.uuid4().hex[:6].upper()}", description="Unique identifier for the session")
     user_id: str = Field(..., description="Employee ID of the user assigned to this session")
     chat_id: str = Field(..., description="ID of the chat associated with this session")
     status: SessionStatus = Field(default=SessionStatus.PENDING, description="Current status of the session")
     scheduled_at: datetime.datetime = Field(..., description="When the session is scheduled for")
-    created_at: datetime.datetime = Field(default_factory=lambda: datetime.datetime.now(datetime.UTC), description="When the session was created")
-    updated_at: datetime.datetime = Field(default_factory=lambda: datetime.datetime.now(datetime.UTC), description="When the session was last updated")
+    created_at: datetime.datetime = Field(default_factory=lambda: datetime.datetime.now(datetime.timezone.utc), description="When the session was created")
+    updated_at: datetime.datetime = Field(default_factory=lambda: datetime.datetime.now(datetime.timezone.utc), description="When the session was last updated")
     completed_at: Optional[datetime.datetime] = Field(default=None, description="When the session was completed")
     cancelled_at: Optional[datetime.datetime] = Field(default=None, description="When the session was cancelled")
     cancelled_by: Optional[str] = Field(default=None, description="Employee ID of who cancelled the session")
     notes: Optional[str] = Field(default=None, description="Any additional notes about the session")
-    chain_id: str = Field(default_factory=lambda: f"CHAIN{uuid.uuid4().hex[:6].upper()}", description="Unique identifier for the chain")
     
     class Settings:
         name = "sessions"
@@ -66,22 +64,20 @@ class Session(Document):
         if self.status != SessionStatus.PENDING:
             raise ValueError("Only pending sessions can be started")
         self.status = SessionStatus.ACTIVE
-        self.updated_at = datetime.datetime.now(datetime.UTC)
+        self.updated_at = datetime.datetime.now(datetime.timezone.utc)
         await self.save()
 
     async def complete_session(self):
-        if self.status != SessionStatus.ACTIVE:
-            raise ValueError("Only active sessions can be completed")
         self.status = SessionStatus.COMPLETED
-        self.completed_at = datetime.datetime.now(datetime.UTC)
-        self.updated_at = datetime.datetime.now(datetime.UTC)
+        self.completed_at = datetime.datetime.now(datetime.timezone.utc)
+        self.updated_at = datetime.datetime.now(datetime.timezone.utc)
         await self.save()
 
     async def cancel_session(self, cancelled_by: str):
         if self.status not in [SessionStatus.PENDING, SessionStatus.ACTIVE]:
             raise ValueError("Only pending or active sessions can be cancelled")
         self.status = SessionStatus.CANCELLED
-        self.cancelled_at = datetime.datetime.now(datetime.UTC)
+        self.cancelled_at = datetime.datetime.now(datetime.timezone.utc)
         self.cancelled_by = cancelled_by
-        self.updated_at = datetime.datetime.now(datetime.UTC)
+        self.updated_at = datetime.datetime.now(datetime.timezone.utc)
         await self.save() 

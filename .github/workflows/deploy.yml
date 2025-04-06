@@ -1,11 +1,9 @@
-name: Deploy to Google App Engine
+name: Deploy to Cloud Run
 
 on:
   push:
     branches:
-      - main  # Deploy when code is pushed to the main branch
-
-
+      - main
 
 jobs:
   deploy:
@@ -25,23 +23,21 @@ jobs:
 
       - name: Set up Google Cloud SDK
         uses: google-github-actions/setup-gcloud@v1
-        with:
-          version: "latest"
 
-      - name: Cache Docker layers
-        uses: actions/cache@v3
-        with:
-          path: /tmp/.buildx-cache
-          key: ${{ runner.os }}-buildx-${{ github.sha }}
-          restore-keys: |
-            ${{ runner.os }}-buildx-
+      - name: Configure Docker for GAR
+        run: gcloud auth configure-docker
 
-      - name: Build and push Docker image
+      - name: Build and push Docker image to Artifact Registry
         run: |
-          gcloud auth configure-docker
+          # Replace 'us-central1' with your region and 'my-repo' with your Artifact Registry repo name
           docker build -t gcr.io/velvety-ray-454718-b8/my-app:latest .
           docker push gcr.io/velvety-ray-454718-b8/my-app:latest
 
-      - name: Deploy to Google App Engine
-        run: gcloud app deploy --quiet --image-url=gcr.io/velvety-ray-454718-b8/my-app:latest
-
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy fastapi-service \
+            --image gcr.io/velvety-ray-454718-b8/my-app:latest \
+            --platform managed \
+            --region us-central1 \
+            --allow-unauthenticated \
+            --set-env-vars "DATABASE_URL=${{ secrets.DATABASE_URL }},secret_key=${{ secrets.SECRET_KEY }},sender_email=${{ secrets.SENDER_EMAIL }},sender_password=${{ secrets.SENDER_PASSWORD }},email_template=${{ secrets.EMAIL_TEMPLATE }},admin_email_template=${{ secrets.ADMIN_EMAIL_TEMPLATE }},LLM_ADDR=${{ secrets.LLM_ADDR }}"

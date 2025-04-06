@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter, HTTPException, Depends
 from typing import List, Optional
-import datetime
+from datetime import timezone, datetime, timedelta
 from pydantic import BaseModel, EmailStr, Field
 from models.session import Session, SessionStatus
 from models.employee import Employee, Role
@@ -16,7 +16,16 @@ from models.notification import Notification, NotificationStatus
 import random
 from utils.utils import send_new_employee_email
 import logging
+from config.config import Settings
+from utils.utils import send_new_session_email
+
+from utils.chain_creation import create_chain
+
+
+import requests
+
 router = APIRouter()
+llm_add = Settings().LLM_ADDR
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 logger = logging.getLogger(__name__)
 
@@ -24,16 +33,16 @@ class CreateUserRequest(BaseModel):
     employee_id: str = Field(..., description="Unique identifier for the employee")
     name: str = Field(..., description="Full name of the employee")
     email: EmailStr = Field(..., description="Employee email address")
-    # password: str = Field(..., min_length=8, description="Employee password")
     role: Role = Field(..., description="User role in the system")
     manager_id: Optional[str] = Field(default=None, description="ID of the employee's manager")
+    meeting_link: Optional[str] = Field(default="", description="Meeting link for HR users")
 
 class DeleteUserRequest(BaseModel):
     employee_id: str = Field(..., description="ID of the employee to delete")
     reason: Optional[str] = Field(default=None, description="Reason for deleting the user")
 
 class CreateSessionRequest(BaseModel):
-    scheduled_at: datetime.datetime = Field(..., description="When the session is scheduled for")
+    scheduled_at: datetime = Field(..., description="When the session is scheduled for")
     notes: Optional[str] = Field(default=None, description="Any additional notes about the session")
 
 class SessionResponse(BaseModel):
@@ -41,7 +50,7 @@ class SessionResponse(BaseModel):
     employee_id: str
     chat_id: str
     status: str
-    scheduled_at: datetime.datetime
+    scheduled_at: datetime
 
 class ReassignHrRequest(BaseModel):
     newHrId: str = Field(..., description="ID of the new HR to assign")
@@ -56,7 +65,7 @@ class NotificationResponse(BaseModel):
     employee_id: str
     title: str
     description: str
-    created_at: datetime.datetime
+    created_at: datetime
     status: NotificationStatus
 
 class ChainResponse(BaseModel):
@@ -65,17 +74,17 @@ class ChainResponse(BaseModel):
     session_ids: List[str]
     status: ChainStatus
     context: Optional[str] = None
-    created_at: datetime.datetime
-    updated_at: datetime.datetime
-    completed_at: Optional[datetime.datetime] = None
-    escalated_at: Optional[datetime.datetime] = None
-    cancelled_at: Optional[datetime.datetime] = None
+    created_at: datetime
+    updated_at: datetime
+    completed_at: Optional[datetime] = None
+    escalated_at: Optional[datetime] = None
+    cancelled_at: Optional[datetime] = None
     notes: Optional[str] = None
 
 class CreateChainRequest(BaseModel):
     employee_id: str = Field(..., description="ID of the employee to create chain for")
     notes: Optional[str] = Field(default=None, description="Any additional notes about the chain")
-    scheduled_time: Optional[datetime.datetime] = Field(
+    scheduled_time: Optional[datetime] = Field(
         default=None,
         description="When to schedule the first session. Defaults to tomorrow at 10 AM."
     )
@@ -83,6 +92,13 @@ class CreateChainRequest(BaseModel):
 class BlockUserRequest(BaseModel):
     employee_id: str = Field(..., description="ID of the employee to block/unblock")
     reason: Optional[str] = Field(default=None, description="Reason for blocking the user")
+
+class EscalatedChainResponse(BaseModel):
+    chain_id: str
+    session_ids: List[str]
+    employee_id: str
+    escalation_reason: str
+    escalated_at: datetime
 
 async def verify_admin(token: str = Depends(JWTBearer())):
     """Verify that the user is an admin."""
@@ -109,6 +125,53 @@ async def verify_hr(token: str = Depends(JWTBearer())):
         raise HTTPException(status_code=403, detail="Only Admin / HR personnel can access this endpoint")
     
     return hr_user
+
+# add an endpoint that returns, just the number of total employees, active employees, total admins, totals hrs, total employees, total sessions, completed sessions, active sessions, pendign sessions, total meetings
+@router.get("/stats", tags=["Admin"])
+async def get_system_stats(admin: dict = Depends(verify_admin)):
+    """
+    Get system-wide statistics including counts of employees, sessions, and meetings.
+    Only administrators can access this endpoint.
+    """
+    try:
+        # Employee stats
+
+        total_employees = len(await Employee.find().to_list())
+        active_employees = len(await Employee.find({"is_active": True}).to_list())
+        total_admins = len(await Employee.find({"role": Role.ADMIN}).to_list())
+        total_hrs = len(await Employee.find({"role": Role.HR}).to_list())
+
+        # Session stats
+        total_sessions = len(await Session.find().to_list())
+        completed_sessions = len(await Session.find({"status": SessionStatus.COMPLETED}).to_list())
+        active_sessions = len(await Session.find({"status": SessionStatus.ACTIVE}).to_list())
+        pending_sessions = len(await Session.find({"status": SessionStatus.PENDING}).to_list())
+
+        # Meeting stats
+        total_meetings = len(await Meet.find().to_list())
+
+        return {
+            "employee_stats": {
+                "total_employees": total_employees,
+                "active_employees": active_employees,
+                "total_admins": total_admins,
+                "total_hrs": total_hrs
+            },
+            "session_stats": {
+                "total_sessions": total_sessions,
+                "completed_sessions": completed_sessions,
+                "active_sessions": active_sessions,
+                "pending_sessions": pending_sessions
+            },
+            "meeting_stats": {
+                "total_meetings": total_meetings
+            }
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error fetching system statistics: {str(e)}"
+        )
 
 @router.get("/missing/{role}", tags=["Admin"])
 async def get_missing_users(role: Role, admin: dict = Depends(verify_admin)):
@@ -182,8 +245,6 @@ async def create_user(
     new_password=f"password{random_number}"
     hashed_password = pwd_context.hash(new_password)
     
-
-
     # Create new employee
     new_employee = Employee(
         employee_id=user_data.employee_id,
@@ -192,12 +253,13 @@ async def create_user(
         password=hashed_password,
         role=user_data.role,
         manager_id=user_data.manager_id,
-        last_ping=datetime.datetime.now()
+        meeting_link=user_data.meeting_link if user_data.role == Role.HR else "",
+        last_ping=datetime.now(timezone.utc)
     )
     
     try:
         await new_employee.insert()
-        send_new_employee_email(user_data.email, user_data.employee_id, new_password)
+        await send_new_employee_email(user_data.email, user_data.employee_id, new_password)
         return {
             "message": "User created successfully",
             "employee_id": new_employee.employee_id,
@@ -237,7 +299,7 @@ async def delete_user(
         )
 
     # Prevent deleting the current admin
-    if employee.employee_id == admin["employee_id"]:
+    if employee.employee_id == admin.employee_id:
         raise HTTPException(
             status_code=400,
             detail="Cannot delete your own account"
@@ -248,7 +310,7 @@ async def delete_user(
         await employee.delete()
         return {
             "message": f"Employee {delete_data.employee_id} deleted successfully",
-            "deleted_by": admin["employee_id"],
+            "deleted_by": admin.employee_id,
             "reason": delete_data.reason
         }
     except Exception as e:
@@ -322,10 +384,23 @@ async def list_hr(admin: dict = Depends(verify_admin)):
             # Count assigned users
             assigned_users = await Employee.get_employees_by_manager(hr.employee_id)
             
+            total_vibe_score = 0
+            valid_employees = 0
+            for user in assigned_users:
+                if (hasattr(user, 'company_data') and 
+                    user.company_data and 
+                    hasattr(user.company_data, 'vibemeter') and 
+                    user.company_data.vibemeter and 
+                    len(user.company_data.vibemeter) > 0):
+                    total_vibe_score += user.company_data.vibemeter[-1].Vibe_Score
+                    valid_employees += 1
+            avg_vibe_score_for_employees = total_vibe_score / valid_employees if valid_employees > 0 else 0
+            
             hr_data = {
                 "hrId": hr.employee_id,
                 "name": hr.name,
-                "currentAssignedUsers": assigned_users
+                "currentAssignedUsersCount": len(assigned_users),
+                "avgVibeScore": avg_vibe_score_for_employees
             }
             hrs.append(hr_data)
         
@@ -352,11 +427,6 @@ async def list_users(hr: Employee = Depends(verify_hr)):
         users = []
         for employee in employees:
             try:
-                # Get the latest vibe meter entry for session data
-                latest_vibe = None
-                if hasattr(employee, 'company_data') and employee.company_data and hasattr(employee.company_data, 'vibemeter') and employee.company_data.vibemeter:
-                    latest_vibe = employee.company_data.vibemeter[-1]
-                
                 # Create user data with proper error handling
                 user_data = {
                     "userId": getattr(employee, 'employee_id', ''),
@@ -364,23 +434,10 @@ async def list_users(hr: Employee = Depends(verify_hr)):
                     "email": getattr(employee, 'email', ''),
                     "role": getattr(employee, 'role', ''),
                     "status": "active" if not getattr(employee, 'is_blocked', False) else "blocked",
-                    "sessionData": {
-                        "latestVibe": latest_vibe,
-                        "moodScores": [
-                            {
-                                "timestamp": vibe.Response_Date.isoformat() if vibe.Response_Date else None,
-                                "Vibe_Score": vibe.Vibe_Score,
-                                # "Emotion_Zone": vibe.Emotion_Zone
-                            }
-                            for vibe in (employee.company_data.vibemeter if hasattr(employee, 'company_data') and employee.company_data and hasattr(employee.company_data, 'vibemeter') else [])
-                        ]
-                    },
                     "lastPing": employee.last_ping.isoformat() 
-
                 }
                 users.append(user_data)
             except Exception as e:
-
                 print(f"Error processing employee {getattr(employee, 'employee_id', 'unknown')}: {str(e)}")
                 continue
         
@@ -426,8 +483,8 @@ async def block_user(
 
     # Block the employee
     employee.is_blocked = True
-    employee.blocked_at = datetime.datetime.now(datetime.UTC)
-    employee.blocked_by = hr["employee_id"]
+    employee.blocked_at = datetime.now(timezone.utc)
+    employee.blocked_by = hr.employee_id
     employee.blocked_reason = block_data.reason
 
     try:
@@ -535,6 +592,8 @@ async def update_meeting_link(
     Update the HR's meeting link that will be used for virtual meetings.
     Only HR personnel can access this endpoint.
     """
+    if hr.role != Role.HR:
+        raise HTTPException(status_code=403, detail="Only HR personnel can access this endpoint")
     try:
         # Update meeting link
         hr.meeting_link = request.meeting_link
@@ -802,7 +861,7 @@ async def complete_session(
     try:
         # Update session status
         session.status = SessionStatus.COMPLETED
-        session.completed_at = datetime.datetime.now(datetime.UTC)
+        session.completed_at = datetime.now(timezone.utc)
         session.notes = session_data.notes
         await session.save()
 
@@ -887,7 +946,13 @@ async def get_meets(hr: Employee = Depends(verify_hr)):
     try:
         # Get all meets for a given HR
         if hr.role == Role.HR:
-            meets = await Meet.get_meets_with_user(hr.employee_id)
+            # Find meets where HR is either the organizer or the participant
+            meets = await Meet.find({
+                "$or": [
+                    {"user_id": hr.employee_id},
+                    {"with_user_id": hr.employee_id}
+                ]
+            }).to_list()
         else: # Get all meets
             meets = await Meet.find_all().to_list()
 
@@ -900,7 +965,7 @@ async def get_meets(hr: Employee = Depends(verify_hr)):
                 "duration": meet.duration_minutes,
                 "status": meet.status,
                 "scheduled_at": meet.scheduled_at,
-                "meeting_link": meet.meeting_link,
+                # "meeting_link": meet.meeting_link,
                 "location": meet.location,
                 "notes": meet.notes,
             }
@@ -1073,7 +1138,7 @@ async def escalate_chain(chain_id: str, hr: Employee = Depends(verify_hr)):
                 detail="Chain is not active"
             )
         
-        await chain.escalate_chain()
+        await chain.escalate_chain(reason=f"Chain escalated by HR {hr.employee_id}")
         return {"message": "Chain escalated to HR"}
     except Exception as e:
         raise HTTPException(
@@ -1123,7 +1188,7 @@ async def cancel_chain(chain_id: str, hr: Employee = Depends(verify_hr)):
         )
 
 @router.post("/chains/create", response_model=ChainResponse, tags=["HR"])
-async def create_chain(
+async def create_chains(
     request: CreateChainRequest,
     hr: Employee = Depends(verify_hr)
 ):
@@ -1146,55 +1211,10 @@ async def create_chain(
                 detail="You can only create chains for employees assigned to you"
             )
         
-        # Check if employee already has an active chain
-        active_chain = await Chain.find_one({
-            "employee_id": request.employee_id,
-            "status": ChainStatus.ACTIVE
-        })
-        if active_chain:
-            raise HTTPException(
-                status_code=400,
-                detail="Employee already has an active chain"
-            )
-        
-        # Set default scheduled time to tomorrow at 10 AM if not provided
-        if not request.scheduled_time:
-            tomorrow = datetime.datetime.now(datetime.UTC) + datetime.timedelta(days=1)
-            request.scheduled_time = tomorrow.replace(hour=10, minute=0, second=0, microsecond=0)
-        
-        # Create a new chat for the session
-        chat = Chat(user_id=request.employee_id)
-        await chat.save()
-        
-        # Create a new session
-        session = Session(
-            user_id=request.employee_id,
-            chat_id=chat.chat_id,
-            scheduled_at=request.scheduled_time,
-            notes=request.notes
-        )
-        await session.save()
-        
-        # Create a new chain
-        chain = Chain(
-            employee_id=request.employee_id,
-            session_ids=[session.session_id],
-            status=ChainStatus.ACTIVE,
-            notes=request.notes
-        )
-        await chain.save()
-        
-        # Create notification for the employee
-        notification = Notification(
-            employee_id=request.employee_id,
-            title="New Support Session Scheduled",
-            description=f"A new support session has been scheduled for you on {request.scheduled_time.strftime('%Y-%m-%d %H:%M')} UTC."
-        )
-        await notification.save()
-        
+        chain = await create_chain(request)
         return chain
         
-    except Exception as e:
+    except Exception as e:        
         raise HTTPException(
             status_code=500,
             detail=f"Error creating chain: {str(e)}"
@@ -1239,3 +1259,45 @@ async def create_notification(
         created_at=new_notification.created_at,
         status=new_notification.status
     )
+
+@router.get("/escalated-chains", response_model=List[EscalatedChainResponse], tags=["HR"])
+async def get_escalated_chains(hr: Employee = Depends(verify_hr)):
+    """
+    Get all escalated chains in the system.
+    For Admin: Returns all escalated chains
+    For HR: Returns only escalated chains of employees under them
+    """
+    try:
+        # Base query to get escalated chains
+        base_query = {"status": ChainStatus.ESCALATED}
+        
+        # If HR, add employee filter
+        if hr.role == Role.HR:
+            # Get all employees under this HR
+            employees = await Employee.get_employees_by_manager(hr.employee_id)
+            employee_ids = [emp.employee_id for emp in employees]
+            # Add employee filter to base query
+            base_query["employee_id"] = {"$in": employee_ids}
+        
+        # Get chains based on query
+        chains = await Chain.find(base_query).to_list()
+        
+        # Format response
+        response = [
+            EscalatedChainResponse(
+                chain_id=chain.chain_id,
+                session_ids=chain.session_ids,
+                employee_id=chain.employee_id,
+                escalation_reason=chain.escalation_reason,
+                escalated_at=chain.escalated_at
+            )
+            for chain in chains
+        ]
+        
+        return response
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error retrieving escalated chains: {str(e)}"
+        )
