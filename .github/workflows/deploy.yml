@@ -25,18 +25,19 @@ jobs:
         uses: google-github-actions/setup-gcloud@v1
 
       - name: Configure Docker for GAR
-        run: gcloud auth configure-docker
-
-      - name: Build and push Docker image to Artifact Registry
         run: |
-          # Replace 'us-central1' with your region and 'my-repo' with your Artifact Registry repo name
-          docker build -t gcr.io/velvety-ray-454718-b8/my-app:latest .
-          docker push gcr.io/velvety-ray-454718-b8/my-app:latest
+          gcloud auth configure-docker us-central1-docker.pkg.dev
+
+      - name: Build and push Docker image to Artifact Registry (GAR)
+        run: |
+          IMAGE=us-central1-docker.pkg.dev/velvety-ray-454718-b8/my-repo/my-app:latest
+          docker build -t $IMAGE .
+          docker push $IMAGE
 
       - name: Deploy to Cloud Run
         run: |
           gcloud run deploy fastapi-service \
-            --image gcr.io/velvety-ray-454718-b8/my-app:latest \
+            --image us-central1-docker.pkg.dev/velvety-ray-454718-b8/my-repo/my-app:latest \
             --platform managed \
             --region us-central1 \
             --allow-unauthenticated \
