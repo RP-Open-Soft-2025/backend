@@ -189,7 +189,7 @@ async def get_user_profile(
             upcoming_meets=0,
             upcoming_sessions=0,
             company_data=employee_data.company_data,
-            meeting_link=employee_data.meeting_link if employee_data.role == "HR" else None
+            meeting_link=employee_data.meeting_link if employee_data.role == "hr" else None
         )
 
         try:
