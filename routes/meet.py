@@ -16,6 +16,7 @@ class ScheduleMeetRequest(BaseModel):
     duration_minutes: int = Field(..., ge=15, le=480, description="Duration in minutes")
     location: Optional[str] = Field(default=None, description="Physical location (if in-person)")
     notes: Optional[str] = Field(default=None, description="Additional notes about the meeting")
+    meeting_link: Optional[str] = Field(default=None, description="Link to the virtual meeting")
 
 async def verify_admin(token: str = Depends(JWTBearer())):
     """Verify that the user is an admin."""
@@ -49,7 +50,7 @@ async def admin_schedule_meeting(
         scheduled_datetime = datetime.strptime(
             f"{meeting_data.scheduled_date} {meeting_data.scheduled_time}", 
             "%Y-%m-%d %H:%M"
-        )
+        ).replace(tzinfo=timezone.utc)
     except ValueError:
         raise HTTPException(
             status_code=400,
@@ -93,8 +94,8 @@ async def admin_schedule_meeting(
                 "name": user.name
             },
             "meeting_link": new_meeting.meeting_link,
-            "meeting_id": new_meeting.meeting_id,
-            "meeting_password": new_meeting.meeting_password,
+            "meeting_id": new_meeting.meet_id,
+            # "meeting_password": new_meeting.meeting_password,
             "scheduled_at": new_meeting.scheduled_at.isoformat(),
             "duration_minutes": new_meeting.duration_minutes,
             "notes": new_meeting.notes
@@ -144,7 +145,7 @@ async def hr_schedule_meeting(
         scheduled_datetime = datetime.strptime(
             f"{meeting_data.scheduled_date} {meeting_data.scheduled_time}", 
             "%Y-%m-%d %H:%M"
-        )
+        ).replace(tzinfo=timezone.utc)
     except ValueError:
         raise HTTPException(
             status_code=400,
