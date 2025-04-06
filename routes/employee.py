@@ -257,7 +257,7 @@ async def get_user_profile(
 
         try:
             # Fetch the last 4 recent chains for the employee
-            recent_chains = await Chain.find({"employee_id": employee["employee_id"]}).sort("-created_at").limit(4).to_list()
+            recent_chains = await Chain.find({"employee_id": employee.employee_id}).sort("-created_at").limit(4).to_list()
             response.recent_chains = [
                 {
                     "chain_id": chain.chain_id,
