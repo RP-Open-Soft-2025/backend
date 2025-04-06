@@ -249,7 +249,7 @@ async def create_user(
     
     try:
         await new_employee.insert()
-        send_new_employee_email(user_data.email, user_data.employee_id, new_password)
+        await send_new_employee_email(user_data.email, user_data.employee_id, new_password)
         return {
             "message": "User created successfully",
             "employee_id": new_employee.employee_id,
@@ -582,6 +582,8 @@ async def update_meeting_link(
     Update the HR's meeting link that will be used for virtual meetings.
     Only HR personnel can access this endpoint.
     """
+    if hr.role != Role.HR:
+        raise HTTPException(status_code=403, detail="Only HR personnel can access this endpoint")
     try:
         # Update meeting link
         hr.meeting_link = request.meeting_link
@@ -934,7 +936,13 @@ async def get_meets(hr: Employee = Depends(verify_hr)):
     try:
         # Get all meets for a given HR
         if hr.role == Role.HR:
-            meets = await Meet.get_meets_with_user(hr.employee_id)
+            # Find meets where HR is either the organizer or the participant
+            meets = await Meet.find({
+                "$or": [
+                    {"user_id": hr.employee_id},
+                    {"with_user_id": hr.employee_id}
+                ]
+            }).to_list()
         else: # Get all meets
             meets = await Meet.find_all().to_list()
 
@@ -947,7 +955,7 @@ async def get_meets(hr: Employee = Depends(verify_hr)):
                 "duration": meet.duration_minutes,
                 "status": meet.status,
                 "scheduled_at": meet.scheduled_at,
-                "meeting_link": meet.meeting_link,
+                # "meeting_link": meet.meeting_link,
                 "location": meet.location,
                 "notes": meet.notes,
             }
