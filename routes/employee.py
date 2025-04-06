@@ -640,12 +640,7 @@ class ChainResponse(BaseModel):
     employee_id: str
     session_ids: List[str]
     status: ChainStatus
-    context: Optional[str] = None
     created_at: datetime.datetime
-    updated_at: datetime.datetime
-    completed_at: Optional[datetime.datetime] = None
-    escalated_at: Optional[datetime.datetime] = None
-    cancelled_at: Optional[datetime.datetime] = None
     notes: Optional[str] = None
 
 @router.get("/chains", response_model=List[ChainResponse], tags=["Employee"])
@@ -654,7 +649,7 @@ async def get_employee_chains(employee: dict = Depends(verify_employee)):
     Get all chains for the current employee.
     """
     try:
-        chains = await Chain.find({"employee_id": employee["employee_id"]}).to_list()
+        chains = await Chain.find({"employee_id": employee["employee_id"]}).to_list()       
         return chains
     except Exception as e:
         raise HTTPException(
