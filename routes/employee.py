@@ -35,10 +35,10 @@ async def verify_employee(token: str = Depends(JWTBearer())):
 async def verify_user(token: str = Depends(JWTBearer())):
     """Verify that the user is an employee."""
     payload = decode_jwt(token)
-    if not payload :
+    if not payload:
         raise HTTPException(
             status_code=403,
-            detail="Not authorized"
+            detail="Only authenticated users can access this endpoint"
         )
     return payload
 
