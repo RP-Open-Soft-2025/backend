@@ -16,6 +16,13 @@ class ResetToken(Document):
         
     @classmethod
     async def create_token(cls, email: str, is_first_login: bool = False, is_admin: bool = False):
+        # Invalidate any existing tokens for this email
+        existing_tokens = await cls.find({"email": email, "used": False}).to_list()
+        for token in existing_tokens:
+            token.used = True
+            await token.save()
+        
+        # Create new token
         token = await cls(
             token=str(uuid.uuid4()),
             email=email,
