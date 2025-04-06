@@ -228,6 +228,14 @@ async def initiate_chat(request: ChatStatusRequest, employee: Employee = Depends
     
     if session.status != SessionStatus.PENDING:
         raise HTTPException(status_code=400, detail="Session is not pending")
+    
+    # Convert scheduled_at to UTC if it's not already timezone-aware
+    scheduled_time = session.scheduled_at
+    if scheduled_time.tzinfo is None:
+        scheduled_time = scheduled_time.replace(tzinfo=timezone.utc)
+    
+    if scheduled_time < datetime.now(timezone.utc):
+        raise HTTPException(status_code=400, detail="Please start the session at the scheduled time")
 
     # Get associated chain
     chain = await Chain.find_one({"session_ids": session.session_id})
