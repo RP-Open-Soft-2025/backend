@@ -109,6 +109,7 @@ class UserDetails(BaseModel):
     upcoming_sessions: int = 0
     company_data: CompanyData = Field(default_factory=CompanyData)
     meeting_link: Optional[str] = None
+    recent_chains: List[Dict[str, Any]] = Field(default_factory=list)
 
 class ChatMessage(BaseModel):
     sender: str
@@ -275,6 +276,22 @@ async def get_user_profile(
             except Exception as e:
                 print(f"Error processing company data: {str(e)}")
                 response.company_data = None
+
+        try:
+            # Fetch the last 4 recent chains for the employee
+            recent_chains = await Chain.find({"employee_id": employee["employee_id"]}).sort("-created_at").limit(4).to_list()
+            response.recent_chains = [
+                {
+                    "chain_id": chain.chain_id,
+                    "status": chain.status,
+                    "notes": chain.notes,
+                    "created_at": chain.created_at
+                }
+                for chain in recent_chains
+            ]
+        except Exception as e:
+            print(f"Error fetching recent chains: {str(e)}")
+            response.recent_chains = []
 
         return response
 

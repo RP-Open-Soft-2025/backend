@@ -1,3 +1,4 @@
+import json
 from models.chain import Chain, ChainStatus
 from models.employee import Employee
 from models.session import Session, SessionStatus
@@ -130,7 +131,9 @@ async def analyze_employee_report(chain_id: str, employee: Employee):
             }
 
         # call the api, LLM_ADDR/report/analyze
+        # print(f"Request data: {json.dumps(report_data)}")
         response = requests.post(f"{llm_add}/report/analyze", json=report_data)
+        # print(response)
         if response.status_code != 200:
             raise HTTPException(
                 status_code=500,

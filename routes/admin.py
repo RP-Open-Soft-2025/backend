@@ -33,9 +33,9 @@ class CreateUserRequest(BaseModel):
     employee_id: str = Field(..., description="Unique identifier for the employee")
     name: str = Field(..., description="Full name of the employee")
     email: EmailStr = Field(..., description="Employee email address")
-    # password: str = Field(..., min_length=8, description="Employee password")
     role: Role = Field(..., description="User role in the system")
     manager_id: Optional[str] = Field(default=None, description="ID of the employee's manager")
+    meeting_link: Optional[str] = Field(default="", description="Meeting link for HR users")
 
 class DeleteUserRequest(BaseModel):
     employee_id: str = Field(..., description="ID of the employee to delete")
@@ -246,6 +246,7 @@ async def create_user(
         password=hashed_password,
         role=user_data.role,
         manager_id=user_data.manager_id,
+        meeting_link=user_data.meeting_link if user_data.role == Role.HR else "",
         last_ping=datetime.now(timezone.utc)
     )
     
