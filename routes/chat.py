@@ -117,7 +117,7 @@ async def send_message(
     HR can only send messages to employees assigned to them.
     """
     # Verify access rights
-    await verify_chat_access(admin_hr["employee_id"], request.chatId, admin_hr["role"])
+    await verify_chat_access(admin_hr.employee_id, request.chatId, admin_hr.role)
     
     # Get the chat
     chat = await Chat.get_chat_by_id(request.chatId)
@@ -136,14 +136,14 @@ async def send_message(
     
     # Add HR/Admin message
     await chat.add_message(
-        admin_hr["role"],
+        admin_hr.role,
         request.message
     )
     
     # Broadcast the new message to all connected clients
     await manager.broadcast_to_chat(request.chatId, {
         "type": "new_message",
-        "sender": admin_hr["role"],
+        "sender": admin_hr.role,
         "message": request.message,
         "timestamp": datetime.now(timezone.utc).isoformat()
     })
@@ -165,7 +165,7 @@ async def get_chat_history(
     HR can only view chats for employees assigned to them.
     """
     # Verify access rights
-    await verify_chat_access(admin_hr["employee_id"], chat_id, admin_hr["role"])
+    await verify_chat_access(admin_hr.employee_id, chat_id, admin_hr.role)
     
     chat = await Chat.get_chat_by_id(chat_id)
     if not chat:
@@ -183,7 +183,7 @@ async def get_chat_history(
     # Broadcast that someone is viewing the chat
     await manager.broadcast_to_chat(chat_id, {
         "type": "viewer_joined",
-        "viewer_role": admin_hr["role"],
+        "viewer_role": admin_hr.role,
         "timestamp": datetime.now(timezone.utc).isoformat()
     })
     
@@ -207,7 +207,7 @@ async def receive_message(
         raise HTTPException(status_code=404, detail="Chat not found")
     
     # Verify the employee owns this chat
-    if chat.user_id != employee["employee_id"]:
+    if chat.user_id != employee.employee_id:
         raise HTTPException(
             status_code=403,
             detail="You can only send messages to your own chat"
