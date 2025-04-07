@@ -144,6 +144,7 @@ async def send_message(
         headers = {'Content-Type': 'application/json'}
         response = requests.post(f"{llm_add}/chatbot/message", json=data, headers=headers)
         response_data = response.json()
+        print('response_data from llm backend: ', response_data)
         bot_response = response_data["message"]
         response_from_llm = response_data
     except Exception as e:
@@ -180,11 +181,10 @@ async def send_message(
         print('complete_the_chain: ', complete_the_chain)
         print('escalate_the_chain: ', escalate_the_chain)
 
-        if complete_the_chain:
-            await chain.complete_chain()
-        
         if escalate_the_chain:
             await chain.escalate_chain(reason=f"Chain escalated for the employee {employee.employee_id} by Chatbot")
+        elif complete_the_chain:
+            await chain.complete_chain()
 
     # count the number of messages in the chat from the employee
     employee_messages_length = len([msg for msg in chat.messages if msg.sender_type != SenderType.BOT])
