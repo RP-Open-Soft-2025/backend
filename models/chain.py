@@ -10,6 +10,8 @@ from models.employee import Employee
 from utils.utils import send_escalation_mail
 from models.meet import Meet
 from models.notification import Notification
+import requests
+from fastapi import HTTPException
 
 class ChainStatus(str, Enum):
     ACTIVE = "active"    # Chain is ongoing
@@ -116,6 +118,33 @@ class Chain(Document):
         for session in sessions:
             session.status = SessionStatus.COMPLETED
             await session.save()
+        
+        # Import Settings locally to avoid circular import
+        from config.config import Settings
+        llm_add = Settings().LLM_ADDR
+        
+        # Prepare data for LLM backend
+        data = {
+            "chain_id": self.chain_id,
+            "session_id": self.session_ids[-1],
+            "employee_id": self.employee_id,
+            "current_context": self.context,
+        }
+
+        try:
+            # Call LLM backend to end session and get updated context
+            response = requests.post(f"{llm_add}/chatbot/end_session", json=data)
+            response_data = response.json()
+            
+            # Update chain context with response from LLM
+            updated_context = response_data.get("updated_context")
+            if updated_context:
+                await self.update_context(updated_context)
+            else:
+                print("No updated context received from LLM")
+
+        except Exception as e:
+            print(f"Error updating chain context: {e}")
         
         # Get the employee details
         employee = await Employee.find_one({"employee_id": self.employee_id})
