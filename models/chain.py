@@ -98,54 +98,92 @@ class Chain(Document):
         await self.save()
 
     async def escalate_chain(self, reason: str):
-        """Mark the chain as escalated to HR"""
+        """Mark the chain as escalated to HR and complete it"""
         if self.status != ChainStatus.ACTIVE:
             raise ValueError("Only active chains can be escalated")
-        self.status = ChainStatus.ESCALATED
-        self.escalated_at = datetime.now(timezone.utc)
-        self.escalation_reason = reason
-        # update all the chats in this chain to be escalated
+        
+        # First complete the chain
+        self.status = ChainStatus.COMPLETED
+        self.completed_at = datetime.now(timezone.utc)
+        self.updated_at = datetime.now(timezone.utc)
+        
+        # Update all the chats in this chain to be completed
         sessions = await Session.find({"session_id": {"$in": self.session_ids}}).to_list()
         for session in sessions:
             session.status = SessionStatus.COMPLETED
             await session.save()
-
-        self.updated_at = datetime.now(timezone.utc)
         
-    # get the employee details
-        user = await Employee.find_one({"employee_id": self.employee_id})
+        # Then mark as escalated
+        self.status = ChainStatus.ESCALATED
+        self.escalated_at = datetime.now(timezone.utc)
+        self.escalation_reason = reason
+        
+        # Get the employee details
+        employee = await Employee.find_one({"employee_id": self.employee_id})
+        if not employee:
+            raise ValueError(f"Employee with ID {self.employee_id} not found")
+        
+        # Get the HR details (manager)
+        hr = None
+        if employee.manager_id:
+            hr = await Employee.find_one({"employee_id": employee.manager_id})
+        
+        # Calculate meeting time (default to 2 days from now at 10 AM)
+        meeting_time = datetime.now(timezone.utc) + timedelta(days=2)
+        meeting_time = meeting_time.replace(hour=10, minute=0, second=0, microsecond=0)
+        
+        # Calculate deadline (1 day before meeting)
+        deadline = meeting_time - timedelta(days=1)
+        
+        # Get meeting link (use HR's meeting link if available)
+        meeting_link = ""
+        if hr and hasattr(hr, 'meeting_link') and hr.meeting_link:
+            meeting_link = hr.meeting_link
+        else:
+            meeting_link = "Meeting link will be provided by HR"
+        
+        # Send an email to the employee
+        await send_escalation_mail(to_email=employee.email, sub=f"""
+Dear {employee.name},
 
-    # send an email to the employee
-        await send_escalation_mail(to_email=user.email, sub=f"""
-Dear {user.name},
+Your counseling chain has been escalated to HR for further assistance. A meeting has been scheduled with your HR representative.
 
-We have detected a need for HR intervention in your chain. Please contact your HR representative for further assistance.
-
-Session Details:
-- Date: {self.escalated_at.strftime('%Y-%m-%d')}
-- Time: {self.escalated_at.strftime('%H:%M')} timezone.utc
-- Deadline: {(self.escalated_at + timedelta(days=2)).strftime('%Y-%m-%d')}
+Meeting Details:
+- Date: {meeting_time.strftime('%Y-%m-%d')}
+- Time: {meeting_time.strftime('%H:%M')} UTC
+- With: {hr.name if hr else "HR Representative"}
+- Meeting Link: {meeting_link}
+- Deadline to Confirm: {deadline.strftime('%Y-%m-%d %H:%M')} UTC
 - Chain ID: {self.chain_id}
 
+Please confirm your attendance by the deadline.
+
 Best regards,
 HR Team
 """)
-    
-    # send an email to the HR
-        await send_escalation_mail(to_email=user.email, sub=f"""
-Dear HR,
+        
+        # Send an email to the HR
+        if hr:
+            await send_escalation_mail(to_email=hr.email, sub=f"""
+Dear {hr.name},
 
-We have detected a need for HR intervention in the chain. Please contact the employee for further assistance.
+A counseling chain has been escalated to you for HR intervention. A meeting has been scheduled with the employee.
 
-Session Details:
-    - Date: {self.escalated_at.strftime('%Y-%m-%d')}
-    - Time: {self.escalated_at.strftime('%H:%M')} timezone.utc
-    - Deadline: {(self.escalated_at + timedelta(days=2)).strftime('%Y-%m-%d')}
-    - Chain ID: {self.chain_id}
-    - Employee ID: {self.employee_id}
-    - Employee Name: {user.name}
-    - Employee Email: {user.email}
+Meeting Details:
+- Date: {meeting_time.strftime('%Y-%m-%d')}
+- Time: {meeting_time.strftime('%H:%M')} UTC
+- With: {employee.name}
+- Meeting Link: {meeting_link}
+- Deadline to Confirm: {deadline.strftime('%Y-%m-%d %H:%M')} UTC
+- Chain ID: {self.chain_id}
+- Employee ID: {employee.employee_id}
+- Employee Email: {employee.email}
+- Escalation Reason: {reason}
+
+Please confirm your attendance by the deadline.
+
 Best regards,
-HR Team
+System
 """)
+        
         await self.save()

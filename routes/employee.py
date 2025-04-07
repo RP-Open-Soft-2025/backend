@@ -27,7 +27,7 @@ class MeetResponse(BaseModel):
     with_user_id: str
     scheduled_at: datetime.datetime
     duration_minutes: int
-    meeting_link: Optional[str] = None
+    meeting_link: Optional[str] = None      
     location: Optional[str] = None
     notes: Optional[str] = None
 
@@ -284,10 +284,9 @@ async def get_scheduled_meets(
 
         # Get meetings where user is the organizer
         try:
-            # print('employee_id: ',employee["employee_id"])
             organizer_meets = await Meet.find({
                 "user_id": employee.employee_id,
-                # "scheduled_at": {"$gt": datetime.datetime.now(datetime.timezone.utc)},
+                "scheduled_at": {"$gt": datetime.datetime.now(datetime.timezone.utc)},
                 "status": MeetStatus.SCHEDULED
             }).to_list()
             print(organizer_meets)
@@ -298,7 +297,7 @@ async def get_scheduled_meets(
         try:
             participant_meets = await Meet.find({
                 "with_user_id": employee.employee_id,
-                # "scheduled_at": {"$gt": datetime.datetime.now(datetime.timezone.utc)},  
+                "scheduled_at": {"$gt": datetime.datetime.now(datetime.timezone.utc)},  
                 "status": MeetStatus.SCHEDULED
             }).to_list()
         except Exception as e:
@@ -308,6 +307,14 @@ async def get_scheduled_meets(
         all_meets = organizer_meets + participant_meets
         if all_meets:
             all_meets.sort(key=lambda x: x.scheduled_at)
+
+            # For each meeting, get the HR's meeting link if the user is a participant
+            for meet in all_meets:
+                if meet.with_user_id == employee.employee_id:
+                    # User is a participant, get the organizer's (HR's) meeting link
+                    hr = await Employee.get_by_id(meet.user_id)
+                    if hr and hr.meeting_link:
+                        meet.meeting_link = hr.meeting_link
 
         return all_meets
 

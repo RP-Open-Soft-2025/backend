@@ -141,40 +141,22 @@ async def hr_schedule_meeting(
             detail="Cannot schedule meetings in the past"
         )
     
-    # Get HR's meeting link
-    hr_user = await Employee.get_by_id(hr["employee_id"])
-    if not hr_user :
-        raise HTTPException(
-            status_code=400,
-            detail="Please set up your meeting link first before scheduling meetings"
-        )
-    
-    # Create the meeting
-    new_meeting = Meet(
-        user_id=hr["employee_id"],
-        with_user_id=meeting_data.user_id,
-        scheduled_at=scheduled_datetime,
-        duration_minutes=meeting_data.duration_minutes,
-        status=MeetStatus.SCHEDULED,
-        # meeting_link=hr_user.meeting_link,
-        location=meeting_data.location,
-        notes=meeting_data.notes
-    )
-    
     try:
-        await new_meeting.create()
-        return {
-            "message": "Meeting scheduled successfully",
-            "meet_id": new_meeting.meet_id,
-            "with_user": {
-                "id": user.employee_id,
-                "name": user.name
-            },
-            # "meeting_link": new_meeting.meeting_link,
-            "scheduled_at": new_meeting.scheduled_at.isoformat(),
-            "duration_minutes": new_meeting.duration_minutes,
-            "notes": new_meeting.notes
-        }
+        # Create the meeting
+        new_meeting = Meet(
+            user_id=hr["employee_id"],
+            with_user_id=meeting_data.user_id,
+            scheduled_at=scheduled_datetime,
+            duration_minutes=meeting_data.duration_minutes,
+            status=MeetStatus.SCHEDULED,
+            meeting_link=hr.meeting_link,
+            location=meeting_data.location,
+            notes=meeting_data.notes
+        )
+
+        await new_meeting.save()
+        return new_meeting
+    
     except Exception as e:
         raise HTTPException(
             status_code=500,
