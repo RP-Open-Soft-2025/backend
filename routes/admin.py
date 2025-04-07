@@ -100,7 +100,10 @@ async def get_system_stats(hr: Employee = Depends(verify_hr)):
     """
     try:
         # Employee stats
-        employees = await Employee.find().to_list()
+        if hr.role == Role.HR:
+            employees = await Employee.get_employees_by_manager(hr.employee_id)
+        else: # Get all employees
+            employees = await Employee.find().to_list()
         total_employees = len(employees)
         active_employees = len([emp for emp in employees if not emp.is_blocked])
         total_admins = len([emp for emp in employees if emp.role == Role.ADMIN])
