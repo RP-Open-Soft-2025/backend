@@ -92,28 +92,38 @@ class EscalatedChainResponse(BaseModel):
     escalated_at: datetime
 
 # add an endpoint that returns, just the number of total employees, active employees, total admins, totals hrs, total employees, total sessions, completed sessions, active sessions, pendign sessions, total meetings
-@router.get("/stats", tags=["Admin Only"])
-async def get_system_stats(admin: Employee = Depends(verify_admin)):
+@router.get("/stats", tags=["HR"])
+async def get_system_stats(hr: Employee = Depends(verify_hr)):
     """
     Get system-wide statistics including counts of employees, sessions, and meetings.
-    Only administrators can access this endpoint.
+    Only Admin / HR personnel can access this endpoint.
     """
     try:
         # Employee stats
-
-        total_employees = len(await Employee.find().to_list())
-        active_employees = len(await Employee.find({"is_active": True}).to_list())
-        total_admins = len(await Employee.find({"role": Role.ADMIN}).to_list())
-        total_hrs = len(await Employee.find({"role": Role.HR}).to_list())
+        employees = await Employee.find().to_list()
+        total_employees = len(employees)
+        active_employees = len([emp for emp in employees if not emp.is_blocked])
+        total_admins = len([emp for emp in employees if emp.role == Role.ADMIN])
+        total_hrs = len([emp for emp in employees if emp.role == Role.HR])
 
         # Session stats
-        total_sessions = len(await Session.find().to_list())
-        completed_sessions = len(await Session.find({"status": SessionStatus.COMPLETED}).to_list())
-        active_sessions = len(await Session.find({"status": SessionStatus.ACTIVE}).to_list())
-        pending_sessions = len(await Session.find({"status": SessionStatus.PENDING}).to_list())
+        if hr.role == Role.HR:
+            employees_assigned_to_hr = await Employee.get_employees_by_manager(hr.employee_id)
+            sessions = await Session.find({"user_id": {"$in": [emp.employee_id for emp in employees_assigned_to_hr]}}).to_list()
+        else:
+            sessions = await Session.find().to_list()
+        total_sessions = len(sessions)
+        completed_sessions = len([session for session in sessions if session.status == SessionStatus.COMPLETED])
+        active_sessions = len([session for session in sessions if session.status == SessionStatus.ACTIVE])
+        pending_sessions = len([session for session in sessions if session.status == SessionStatus.PENDING])
 
         # Meeting stats
-        total_meetings = len(await Meet.find().to_list())
+        if hr.role == Role.HR:
+            employees_assigned_to_hr = await Employee.get_employees_by_manager(hr.employee_id)
+            meetings = await Meet.find({"with_user_id": {"$in": [emp.employee_id for emp in employees_assigned_to_hr]}}).to_list()
+        else:
+            meetings = await Meet.find().to_list()
+        total_meetings = len(meetings)
 
         return {
             "employee_stats": {
