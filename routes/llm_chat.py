@@ -132,17 +132,6 @@ async def send_message(
     
     if(chat.messages[-1].sender_type == SenderType.EMPLOYEE):
         raise HTTPException(status_code=400, detail="Please wait for the bot to respond before sending a message")
-
-    # Add employee message
-    await chat.add_message(SenderType.EMPLOYEE, request.message)
-    
-    # Broadcast employee message
-    await llm_manager.broadcast_to_chat(request.chatId, {
-        "type": "new_message",
-        "sender": SenderType.EMPLOYEE.value,
-        "message": request.message,
-        "timestamp": datetime.now(timezone.utc).isoformat()
-    })
     
     # Send message to LLM backend (without context)
     bot_response = "Thank you for reaching out. I'm here to help. Can you tell me more about what's on your mind?"
@@ -162,7 +151,18 @@ async def send_message(
         response_from_llm = response_data
     except Exception as e:
         raise HTTPException(500, detail=str(e))
-        
+
+    # Add employee message
+    await chat.add_message(SenderType.EMPLOYEE, request.message)
+    
+    # Broadcast employee message
+    await llm_manager.broadcast_to_chat(request.chatId, {
+        "type": "new_message",
+        "sender": SenderType.EMPLOYEE.value,
+        "message": request.message,
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    })
+
     await chat.add_message(SenderType.BOT, bot_response)
     
     # Broadcast bot response
