@@ -135,7 +135,7 @@ class Chain(Document):
             scheduled_at=meeting_time,
             duration_minutes=30,
             meeting_link=hr.meeting_link,
-            reason=reason
+            notes=reason
         )
 
         await new_meeting.save()
