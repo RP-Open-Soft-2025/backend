@@ -745,7 +745,7 @@ async def get_employee_chains(employee_id: str, hr: Employee = Depends(verify_hr
         chains = await Chain.find({"employee_id": employee_id}).to_list()
         
         result = []
-        for chain in chains[1:2]:
+        for chain in chains:
             chain_dict = chain.model_dump()
             sessions = await Session.find({"session_id": {"$in": chain.session_ids}}).to_list()
             session_responses = []
