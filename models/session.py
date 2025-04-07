@@ -16,7 +16,7 @@ class Session(Document):
     user_id: str = Field(..., description="Employee ID of the user assigned to this session")
     chat_id: str = Field(..., description="ID of the chat associated with this session")
     status: SessionStatus = Field(default=SessionStatus.PENDING, description="Current status of the session")
-    scheduled_at: datetime.datetime = Field(..., description="When the session is scheduled for")
+    scheduled_at: datetime.datetime = Field(..., description="When the session is scheduled for", default_factory=lambda: datetime.datetime.now(datetime.timezone.utc))
     created_at: datetime.datetime = Field(default_factory=lambda: datetime.datetime.now(datetime.timezone.utc), description="When the session was created")
     updated_at: datetime.datetime = Field(default_factory=lambda: datetime.datetime.now(datetime.timezone.utc), description="When the session was last updated")
     completed_at: Optional[datetime.datetime] = Field(default=None, description="When the session was completed")

@@ -223,17 +223,16 @@ async def initiate_chat(request: ChatStatusRequest, employee: Employee = Depends
     if scheduled_time.tzinfo is None:
         scheduled_time = scheduled_time.replace(tzinfo=timezone.utc)
     
-    if scheduled_time < datetime.now(timezone.utc):
+    print('scheduled_time: ', scheduled_time)
+    print('datetime.now(timezone.utc): ', datetime.now(timezone.utc))
+    
+    if scheduled_time > datetime.now(timezone.utc):
         raise HTTPException(status_code=400, detail="Please start the session at the scheduled time")
 
     # Get associated chain
     chain = await Chain.find_one({"session_ids": session.session_id})
     if not chain:
-
-
-
         raise HTTPException(status_code=404, detail="Associated chain not found")
-    
     
     bot_response = "Good Morning. First Question?"
     try:
