@@ -4,39 +4,51 @@ from datetime import datetime, timezone, timedelta
 from pydantic import BaseModel, Field
 from models.employee import Employee, Role
 from models.meet import Meet, MeetStatus
-from auth.jwt_bearer import JWTBearer
-from auth.jwt_handler import decode_jwt
-from utils.verify_admin import verify_admin
 from utils.verify_hr import verify_hr
 from utils.verify_employee import verify_employee
 router = APIRouter()
 
 class ScheduleMeetRequest(BaseModel):
-    user_id: str = Field(..., description="Employee ID of the user to meet with")
+    user_id: Optional[str] = Field(default=None, description="Employee ID of the HR who is organizing the meeting")
+    with_user_id: str = Field(..., description="Employee ID of the user to meet with")
     scheduled_date: str = Field(..., description="Date of the meeting (YYYY-MM-DD)")
     scheduled_time: str = Field(..., description="Time of the meeting (HH:MM)")
     duration_minutes: int = Field(..., ge=15, le=480, description="Duration in minutes")
     location: Optional[str] = Field(default=None, description="Physical location (if in-person)")
     notes: Optional[str] = Field(default=None, description="Additional notes about the meeting")
-    # meeting_link: Optional[str] = Field(default=None, description="Link to the virtual meeting")
+    meeting_link: Optional[str] = Field(default=None, description="Link to the virtual meeting")
 
-@router.post("/admin-schedule", tags=["Meetings"])
-async def admin_schedule_meeting(
+@router.post("/schedule", tags=["Meetings"])
+async def schedule_meeting(
     meeting_data: ScheduleMeetRequest,
-    admin: dict = Depends(verify_admin)
+    hr: Employee = Depends(verify_hr)
 ):
     """
     Schedule a meeting with a user as an admin.
-    Only administrators can access this endpoint.
+    Only Admin / HR can access this endpoint.
     """
-    # Check if the user exists
-    user = await Employee.get_by_id(meeting_data.user_id)
-    if not user:
+
+    hr_employee = None
+    if(hr.role == Role.ADMIN):
+        # check if the user_id is a valid employee
+        hr_employee = await Employee.get_by_id(meeting_data.user_id)
+        if not hr_employee:
+            raise HTTPException(
+                status_code=404,
+                detail=f"User with ID {meeting_data.user_id} not found"
+            )
+    else:
+        meeting_data.with_user_id = hr.employee_id
+        hr_employee = hr
+
+    # Check if the with_user_id is a valid employee
+    employee = await Employee.get_by_id(meeting_data.with_user_id)
+    if not employee:
         raise HTTPException(
             status_code=404,
-            detail=f"User with ID {meeting_data.user_id} not found"
+            detail=f"User with ID {meeting_data.with_user_id} not found"
         )
-    
+
     # Parse the datetime
     try:
         scheduled_datetime = datetime.strptime(
@@ -56,105 +68,20 @@ async def admin_schedule_meeting(
             detail="Cannot schedule meetings in the past"
         )
     
-    # Generate Zoom meeting link
-    # meeting_details = await generate_meet_link()
-    # if not meeting_details:
-    #     raise HTTPException(
-    #         status_code=500,
-    #         detail="Failed to generate meeting link"
-    #     )
-    
     # Create the meeting
     new_meeting = Meet(
-        user_id=admin["employee_id"],
-        with_user_id=meeting_data.user_id,
+        user_id=hr_employee.employee_id,
+        with_user_id=meeting_data.with_user_id,
         scheduled_at=scheduled_datetime,
         duration_minutes=meeting_data.duration_minutes,
         status=MeetStatus.SCHEDULED,
-        # meeting_link=meeting_data.meeting_link,
+        meeting_link=meeting_data.meeting_link if meeting_data.meeting_link else hr_employee.meeting_link,
         location=meeting_data.location,
         notes=meeting_data.notes
     )
     
     try:
         await new_meeting.create()
-        return {
-            "message": "Meeting scheduled successfully",
-            "meet_id": new_meeting.meet_id,
-            "with_user": {
-                "id": user.employee_id,
-                "name": user.name
-            },
-            # "meeting_link": new_meeting.meeting_link,
-            "meeting_id": new_meeting.meet_id,
-            # "meeting_password": new_meeting.meeting_password,
-            "scheduled_at": new_meeting.scheduled_at.isoformat(),
-            "duration_minutes": new_meeting.duration_minutes,
-            "notes": new_meeting.notes
-        }
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error scheduling meeting: {str(e)}"
-        )
-
-@router.post("/hr-schedule", tags=["Meetings"])
-async def hr_schedule_meeting(
-    meeting_data: ScheduleMeetRequest,
-    hr: dict = Depends(verify_hr)
-):
-    """
-    Schedule a meeting with a user as an HR.
-    Only HR personnel can access this endpoint.
-    """
-    # Check if the user exists
-    user = await Employee.get_by_id(meeting_data.user_id)
-    if not user:
-        raise HTTPException(
-            status_code=404,
-            detail=f"User with ID {meeting_data.user_id} not found"
-        )
-    
-    # Verify that the user is assigned to this HR
-    if user.manager_id != hr["employee_id"]:
-        raise HTTPException(
-            status_code=403,
-            detail=f"User {meeting_data.user_id} is not assigned to you as HR"
-        )
-    
-    # Parse the datetime
-    try:
-        scheduled_datetime = datetime.strptime(
-            f"{meeting_data.scheduled_date} {meeting_data.scheduled_time}", 
-            "%Y-%m-%d %H:%M"
-        ).replace(tzinfo=timezone.utc)
-    except ValueError:
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid date or time format. Use YYYY-MM-DD for date and HH:MM for time."
-        )
-    
-    # Check if the meeting is in the past
-    if scheduled_datetime < datetime.now(timezone.utc):
-        raise HTTPException(
-            status_code=400,
-            detail="Cannot schedule meetings in the past"
-        )
-    
-    try:
-        # Create the meeting
-        new_meeting = Meet(
-            user_id=hr["employee_id"],
-            with_user_id=meeting_data.user_id,
-            scheduled_at=scheduled_datetime,
-            duration_minutes=meeting_data.duration_minutes,
-            status=MeetStatus.SCHEDULED,
-            meeting_link=hr.meeting_link,
-            location=meeting_data.location,
-            notes=meeting_data.notes
-        )
-
-        await new_meeting.save()
         return new_meeting
     
     except Exception as e:
@@ -163,13 +90,13 @@ async def hr_schedule_meeting(
             detail=f"Error scheduling meeting: {str(e)}"
         )
 
-@router.get("/organized-meetings", tags=["Meetings"])
-async def get_organized_meetings(user: dict = Depends(verify_employee)):
+@router.get("/meetings-to-organize", tags=["Meetings"])
+async def get_meetings_to_organize(user: Employee = Depends(verify_hr)):
     """
-    Get all meetings organized by the authenticated user.
+    Get all meetings to organize for the authenticated user.
     """
     try:
-        employee_id = user["employee_id"]
+        employee_id = user.employee_id
         
         # Get meetings where user is the organizer
         organized_meetings = await Meet.find({"user_id": employee_id}).to_list()
@@ -194,7 +121,7 @@ async def get_organized_meetings(user: dict = Depends(verify_employee)):
                 "duration": meeting.duration_minutes,
                 "status": meeting.status,
                 "location": meeting.location,
-                # "meetingLink": meeting.meeting_link,
+                "meetingLink": meeting.meeting_link,
                 "notes": meeting.notes
             }
             formatted_meetings.append(meeting_data)
@@ -207,12 +134,12 @@ async def get_organized_meetings(user: dict = Depends(verify_employee)):
         )
 
 @router.get("/meetings-to-attend", tags=["Meetings"])
-async def get_meetings_to_attend(user: dict = Depends(verify_employee)):
+async def get_meetings_to_attend(user: Employee = Depends(verify_employee)):
     """
     Get all meetings where the authenticated user is a participant.
     """
     try:
-        employee_id = user["employee_id"]
+        employee_id = user.employee_id
         
         # Get meetings where user is the participant
         participating_meetings = await Meet.find({"with_user_id": employee_id}).to_list()
@@ -237,7 +164,7 @@ async def get_meetings_to_attend(user: dict = Depends(verify_employee)):
                 "duration": meeting.duration_minutes,
                 "status": meeting.status,
                 "location": meeting.location,
-                # "meetingLink": meeting.meeting_link,
+                "meetingLink": meeting.meeting_link,
                 "notes": meeting.notes
             }
             formatted_meetings.append(meeting_data)

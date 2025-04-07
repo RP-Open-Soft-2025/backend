@@ -12,18 +12,15 @@ class MeetStatus(str, Enum):
     CANCELLED = "CANCELLED"  # Meeting was cancelled
     NO_SHOW = "NO_SHOW"  # One or more participants didn't show up
 
-
 class Meet(Document):
     meet_id: str = Field(default_factory=lambda: f"MEET{uuid.uuid4().hex[:6].upper()}", description="Unique identifier for the meeting")
-    user_id: str = Field(..., description="Employee ID of the user who scheduled the meeting")
+    user_id: str = Field(..., description="Employee ID of the HR who scheduled the meeting")
     with_user_id: str = Field(..., description="Employee ID of the person the meeting is with")
     scheduled_at: datetime.datetime = Field(..., description="When the meeting is scheduled for")
     duration_minutes: int = Field(..., ge=1, le=480, description="Duration of the meeting in minutes (1-480)")
     status: MeetStatus = Field(default=MeetStatus.SCHEDULED, description="Current status of the meeting")
     created_at: datetime.datetime = Field(default_factory=lambda: datetime.datetime.now(datetime.timezone.utc), description="When the meeting was created")
     updated_at: datetime.datetime = Field(default_factory=lambda: datetime.datetime.now(datetime.timezone.utc), description="When the meeting was last updated")
-    started_at: Optional[datetime.datetime] = Field(default=None, description="When the meeting started")
-    ended_at: Optional[datetime.datetime] = Field(default=None, description="When the meeting ended")
     cancelled_at: Optional[datetime.datetime] = Field(default=None, description="When the meeting was cancelled")
     cancelled_by: Optional[str] = Field(default=None, description="Employee ID of who cancelled the meeting")
     meeting_link: Optional[str] = Field(default=None, description="Link to the meeting (if virtual)")
@@ -51,7 +48,7 @@ class Meet(Document):
                 "status": "scheduled",
                 "created_at": "2024-03-20T10:00:00Z",
                 "updated_at": "2024-03-20T10:00:00Z",
-                # "meeting_link": "https://meet.google.com/abc-defg-hij",
+                "meeting_link": "https://meet.google.com/abc-defg-hij",
                 "location": "Conference Room A",
                 "notes": "Quarterly review meeting"
             }

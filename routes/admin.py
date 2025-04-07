@@ -79,6 +79,9 @@ class MeetResponse(BaseModel):
     scheduled_at: datetime
     duration_minutes: int
     status: MeetStatus
+    meeting_link: Optional[str] = None
+    location: Optional[str] = None
+    notes: Optional[str] = None
 
 class EscalatedChainResponse(BaseModel):
     chain_id: str
