@@ -17,7 +17,7 @@ class Meet(Document):
     user_id: str = Field(..., description="Employee ID of the HR who scheduled the meeting")
     with_user_id: str = Field(..., description="Employee ID of the person the meeting is with")
     scheduled_at: datetime.datetime = Field(..., description="When the meeting is scheduled for")
-    duration_minutes: int = Field(..., ge=1, le=480, description="Duration of the meeting in minutes (1-480)")
+    duration_minutes: Optional[int] = Field(default=None, ge=1, le=480, description="Duration of the meeting in minutes (1-480)")
     status: MeetStatus = Field(default=MeetStatus.SCHEDULED, description="Current status of the meeting")
     created_at: datetime.datetime = Field(default_factory=lambda: datetime.datetime.now(datetime.timezone.utc), description="When the meeting was created")
     updated_at: datetime.datetime = Field(default_factory=lambda: datetime.datetime.now(datetime.timezone.utc), description="When the meeting was last updated")

@@ -3,12 +3,13 @@ import datetime
 from datetime import datetime, timedelta, timezone
 from enum import Enum
 from beanie import Document
-from pydantic import BaseModel, Field
+from pydantic import  Field
 import uuid
 from models.chat import Chat
 from models.session import Session, SessionStatus
 from models.employee import Employee
 from utils.utils import send_escalation_mail
+from models.meet import Meet
 
 class ChainStatus(str, Enum):
     ACTIVE = "active"    # Chain is ongoing
@@ -113,11 +114,6 @@ class Chain(Document):
             session.status = SessionStatus.COMPLETED
             await session.save()
         
-        # Then mark as escalated
-        self.status = ChainStatus.ESCALATED
-        self.escalated_at = datetime.now(timezone.utc)
-        self.escalation_reason = reason
-        
         # Get the employee details
         employee = await Employee.find_one({"employee_id": self.employee_id})
         if not employee:
@@ -129,18 +125,26 @@ class Chain(Document):
             hr = await Employee.find_one({"employee_id": employee.manager_id})
         
         # Calculate meeting time (default to 2 days from now at 10 AM)
-        meeting_time = datetime.now(timezone.utc) + timedelta(days=2)
+        meeting_time = datetime.now(timezone.utc) + timedelta(days=1)
         meeting_time = meeting_time.replace(hour=10, minute=0, second=0, microsecond=0)
         
-        # Calculate deadline (1 day before meeting)
-        deadline = meeting_time - timedelta(days=1)
-        
-        # Get meeting link (use HR's meeting link if available)
-        meeting_link = ""
-        if hr and hasattr(hr, 'meeting_link') and hr.meeting_link:
-            meeting_link = hr.meeting_link
-        else:
-            meeting_link = "Meeting link will be provided by HR"
+        # Schedule a new meeting
+        new_meeting = Meet(
+            user_id=hr.employee_id,
+            with_user_id=employee.employee_id,
+            scheduled_at=meeting_time,
+            duration_minutes=30,
+            meeting_link=hr.meeting_link,
+            reason=reason
+        )
+
+        await new_meeting.save()
+
+        # Then mark as escalated
+        self.status = ChainStatus.ESCALATED
+        self.escalated_at = datetime.now(timezone.utc)
+        self.escalation_reason = reason
+        self.meet_id = new_meeting.meet_id
         
         # Send an email to the employee
         await send_escalation_mail(to_email=employee.email, sub=f"""
@@ -152,8 +156,7 @@ Meeting Details:
 - Date: {meeting_time.strftime('%Y-%m-%d')}
 - Time: {meeting_time.strftime('%H:%M')} UTC
 - With: {hr.name if hr else "HR Representative"}
-- Meeting Link: {meeting_link}
-- Deadline to Confirm: {deadline.strftime('%Y-%m-%d %H:%M')} UTC
+- Meeting Link: {new_meeting.meeting_link}
 - Chain ID: {self.chain_id}
 
 Please confirm your attendance by the deadline.
@@ -173,8 +176,7 @@ Meeting Details:
 - Date: {meeting_time.strftime('%Y-%m-%d')}
 - Time: {meeting_time.strftime('%H:%M')} UTC
 - With: {employee.name}
-- Meeting Link: {meeting_link}
-- Deadline to Confirm: {deadline.strftime('%Y-%m-%d %H:%M')} UTC
+- Meeting Link: {new_meeting.meeting_link}
 - Chain ID: {self.chain_id}
 - Employee ID: {employee.employee_id}
 - Employee Email: {employee.email}
