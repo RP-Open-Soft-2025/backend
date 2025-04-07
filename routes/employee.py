@@ -430,7 +430,7 @@ async def get_employee_chats(
         # Broadcast that the employee is viewing their chats
         await employee_chat_manager.broadcast_to_employee(employee.employee_id, {
             "type": "chats_viewed",
-            "timestamp": datetime.datetime.now().isoformat(),
+            "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
             "total_chats": len(chat_summaries)
         })
         
@@ -495,7 +495,7 @@ async def ping_user(employee: dict = Depends(verify_employee)):
     emp_id = employee.employee_id
     try:
         # Update last ping time
-        await Employee.find_one({"employee_id": emp_id}).update_one({"$set": {"last_ping": datetime.datetime.now()}})
+        await Employee.find_one({"employee_id": emp_id}).update_one({"$set": {"last_ping": datetime.datetime.now(datetime.timezone.utc)}})
         
         # Get all notifications for the employee
         notifications = await Notification.get_notifications_by_employee(emp_id)

@@ -1,5 +1,5 @@
 from enum import Enum
-from datetime import datetime
+from datetime import datetime, timezone
 from beanie import Document
 from pydantic import Field
 import logging
@@ -17,7 +17,7 @@ class Notification(Document):
     employee_id: str = Field(..., description="ID of the employee who should receive this notification")
     title: str = Field(..., description="Title of the notification")
     description: str = Field(..., description="Description/content of the notification")
-    created_at: datetime = Field(default_factory=lambda: datetime.now(), description="When the notification was created")
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), description="When the notification was created")
     status: NotificationStatus = Field(default=NotificationStatus.UNREAD, description="Read status of the notification")
 
     class Settings:

@@ -3,7 +3,7 @@ from typing import Dict, Any, List, Set
 from auth.jwt_handler import decode_jwt
 from auth.jwt_bearer import JWTBearer
 from models.chat import Chat, SenderType
-from datetime import timedelta, datetime
+from datetime import timedelta, datetime, timezone
 from pydantic import BaseModel
 from models.session import Session, SessionStatus
 from models.employee import Employee, Role
@@ -145,7 +145,7 @@ async def send_message(
         "type": "new_message",
         "sender": admin_hr["role"],
         "message": request.message,
-        "timestamp": datetime.now().isoformat()
+        "timestamp": datetime.now(timezone.utc).isoformat()
     })
     
     return {
@@ -184,7 +184,7 @@ async def get_chat_history(
     await manager.broadcast_to_chat(chat_id, {
         "type": "viewer_joined",
         "viewer_role": admin_hr["role"],
-        "timestamp": datetime.now().isoformat()
+        "timestamp": datetime.now(timezone.utc).isoformat()
     })
     
     return ChatHistoryResponse(
@@ -234,7 +234,7 @@ async def receive_message(
         "type": "new_message",
         "sender": SenderType.EMPLOYEE.value,
         "message": request.message,
-        "timestamp": datetime.now().isoformat()
+        "timestamp": datetime.now(timezone.utc).isoformat()
     })
     
     return {
@@ -255,7 +255,7 @@ def assignTimeCalendar(existing_meetings: list[Meet], duration: int = 60) -> dat
         datetime: The earliest available datetime for scheduling the new meeting
     """
     
-    current_time = datetime.datetime.now()
+    current_time = datetime.datetime.now(timezone.utc)
     earliest_start_time = current_time
     
     # If no meetings exist, use the earliest start time

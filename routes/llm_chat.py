@@ -141,7 +141,7 @@ async def send_message(
         "type": "new_message",
         "sender": SenderType.EMPLOYEE.value,
         "message": request.message,
-        "timestamp": datetime.now().isoformat()
+        "timestamp": datetime.now(timezone.utc).isoformat()
     })
     
     # Send message to LLM backend (without context)
@@ -152,6 +152,7 @@ async def send_message(
         data = {
             "session_id": session.session_id,
             "chain_id": chain.chain_id,
+            "employee_id": employee.employee_id,
             "message": request.message
         }
         headers = {'Content-Type': 'application/json'}
@@ -169,7 +170,7 @@ async def send_message(
         "type": "new_message",
         "sender": SenderType.BOT.value,
         "message": bot_response,
-        "timestamp": datetime.now().isoformat()
+        "timestamp": datetime.now(timezone.utc).isoformat()
     })
 
     # Check if complete_the_chain or escalate_the_chain is true in LLM response
@@ -208,7 +209,7 @@ async def initiate_chat(request: ChatStatusRequest, employee: Employee = Depends
         raise HTTPException(status_code=403, detail="Not authorized to access this chat")
     
     # Update created_at to current time
-    chat.created_at = datetime.now().isoformat()
+    chat.created_at = datetime.now(timezone.utc).isoformat()
     
     session = await Session.find_one({"chat_id": chat.chat_id})
     if not session:
@@ -228,6 +229,9 @@ async def initiate_chat(request: ChatStatusRequest, employee: Employee = Depends
     # Get associated chain
     chain = await Chain.find_one({"session_ids": session.session_id})
     if not chain:
+
+
+
         raise HTTPException(status_code=404, detail="Associated chain not found")
     
     
@@ -268,7 +272,7 @@ async def initiate_chat(request: ChatStatusRequest, employee: Employee = Depends
     await llm_manager.broadcast_to_chat(request.chatId, {
         "type": "status_update",
         "status": request.status,
-        "timestamp": datetime.now().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "message": bot_response
     })
     
@@ -345,9 +349,9 @@ async def create_session(request: CreateSessionRequest):
 A counseling session has been scheduled for you based on our employee wellness program.
 
 Session Details:
-- Date: {datetime.now().strftime('%Y-%m-%d')}
-- Time: {datetime.now().strftime('%H:%M')} timezone.utc
-- Deadline: {(datetime.now() + timedelta(days=2)).strftime('%Y-%m-%d')}
+- Date: {datetime.now(timezone.utc).strftime('%Y-%m-%d')}
+- Time: {datetime.now(timezone.utc).strftime('%H:%M')}
+- Deadline: {(datetime.now(timezone.utc) + timedelta(days=2)).strftime('%Y-%m-%d')}
 - Session ID: {session.session_id}
 - Chain ID: {chain.chain_id}
 
@@ -413,6 +417,7 @@ async def end_session(
         data = {
             "chain_id": chain.chain_id,
             "session_id": session.session_id,
+            "employee_id": employee.employee_id,
             "current_context": chain.context,
             "current_session_messages": current_session_messages
         }
