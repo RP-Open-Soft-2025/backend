@@ -1,8 +1,13 @@
-from typing import Optional
 from enum import Enum
 from datetime import datetime
 from beanie import Document
-from pydantic import BaseModel, Field
+from pydantic import Field
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 
 class NotificationStatus(str, Enum):
     READ = "read"
@@ -51,3 +56,19 @@ class Notification(Document):
         """Mark notification as read"""
         self.status = NotificationStatus.READ
         await self.save() 
+
+async def create_notification(employee_id: str, title: str, description: str):
+    """Create a notification for an employee."""
+    try:
+        notification = Notification(
+            employee_id=employee_id,
+            title=title,
+            description=description,
+            status=NotificationStatus.UNREAD
+        )
+        await notification.save()
+        logger.info(f"Created notification for employee {employee_id}")
+        return notification
+    except Exception as e:
+        logger.error(f"Error creating notification for employee {employee_id}: {str(e)}")
+        return None

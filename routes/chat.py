@@ -5,11 +5,12 @@ from auth.jwt_bearer import JWTBearer
 from models.chat import Chat, SenderType
 from datetime import timedelta, datetime
 from pydantic import BaseModel
-from fastapi.security import OAuth2PasswordBearer, HTTPAuthorizationCredentials
 from models.session import Session, SessionStatus
 from models.employee import Employee, Role
 from models.meet import Meet, MeetStatus
 from typing import Optional
+from utils.verify_hr import verify_hr
+from utils.verify_employee import verify_employee
 
 router = APIRouter()
 class EscalateChatRequest(BaseModel):
@@ -61,26 +62,6 @@ class ConnectionManager:
 
 manager = ConnectionManager()
 
-async def verify_admin_or_hr(token: str = Depends(JWTBearer())):
-    """Verify that the user is either an admin or HR."""
-    payload = decode_jwt(token)
-    if not payload or payload.get("role") not in ["admin", "hr"]:
-        raise HTTPException(
-            status_code=403,
-            detail="Only administrators and HR can access this endpoint"
-        )
-    return payload
-
-async def verify_employee(token: str = Depends(JWTBearer())):
-    """Verify that the user is an employee."""
-    payload = decode_jwt(token)
-    if not payload or payload.get("role") != "employee":
-        raise HTTPException(
-            status_code=403,
-            detail="Only employees can access this endpoint"
-        )
-    return payload
-
 async def verify_chat_access(admin_hr_id: str, chat_id: str, role: str):
     """Verify that the user has rights to access the chat."""
     if role == "admin":
@@ -128,7 +109,7 @@ async def websocket_endpoint(websocket: WebSocket, chat_id: str):
 @router.post("/message-to-employee")
 async def send_message(
     request: ChatMessageRequest,
-    admin_hr: dict = Depends(verify_admin_or_hr)
+    admin_hr: dict = Depends(verify_hr)
 ):
     """
     Send a message to an employee.
@@ -176,7 +157,7 @@ async def send_message(
 @router.get("/history/{chat_id}", response_model=ChatHistoryResponse)
 async def get_chat_history(
     chat_id: str,
-    admin_hr: dict = Depends(verify_admin_or_hr)
+    admin_hr: dict = Depends(verify_hr)
 ):
     """
     Get chat history for review.

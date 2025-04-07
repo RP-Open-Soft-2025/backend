@@ -5,7 +5,7 @@ from employee_filtering.blackbox import select_employees
 from models.session import Session, SessionStatus
 from models.employee import Employee
 from models.chat import Chat
-from models.notification import Notification, NotificationStatus
+from models.notification import Notification, create_notification
 from models.chain import Chain, ChainStatus
 from utils.utils import send_new_session_email, send_deadline_reminder_email, send_deadline_over_email
 import json
@@ -78,22 +78,6 @@ async def generate_employee_data_json():
     except Exception as e:
         logger.error(f"Error generating employee_data.json: {str(e)}")
         return False
-
-async def create_notification(employee_id: str, title: str, description: str):
-    """Create a notification for an employee."""
-    try:
-        notification = Notification(
-            employee_id=employee_id,
-            title=title,
-            description=description,
-            status=NotificationStatus.UNREAD
-        )
-        await notification.save()
-        logger.info(f"Created notification for employee {employee_id}")
-        return notification
-    except Exception as e:
-        logger.error(f"Error creating notification for employee {employee_id}: {str(e)}")
-        return None
 
 async def schedule_session_and_notify(employee_id: str):
     """Schedule a counseling session for an employee and send notifications."""

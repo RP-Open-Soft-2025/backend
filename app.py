@@ -10,7 +10,7 @@ from routes.session import router as SessionRouter
 from routes.llm_chat import router as LLMChatRouter
 from routes.chat import router as ChatRouter
 from routes.meet import router as MeetRouter
-from routes.tryMail import router as tryMailRouter
+from routes.test import router as TestRouter
 # from routes.chain import router as ChainRouter
 from utils.scheduler import setup_scheduler
 from middleware import AuthMiddleware
@@ -87,4 +87,4 @@ app.include_router(ChatRouter, tags=["chat"], prefix="/chat")
 app.include_router(LLMChatRouter, tags=["LLM-Chat"], prefix="/llm/chat")
 # app.include_router(ChainRouter, tags=["Chain"], prefix="/chain")
 app.include_router(MeetRouter, tags=["Meetings"], prefix="/meet")
-app.include_router(tryMailRouter, tags=["tryMail"], prefix="/tryMail")
+app.include_router(TestRouter, tags=["test"], prefix="/test")

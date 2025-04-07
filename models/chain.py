@@ -148,12 +148,3 @@ Best regards,
 HR Team
 """)
         await self.save()
-
-    async def cancel_chain(self):
-        """Mark the chain as cancelled"""
-        if self.status not in [ChainStatus.ACTIVE, ChainStatus.ESCALATED]:
-            raise ValueError("Only active or escalated chains can be cancelled")
-        self.status = ChainStatus.CANCELLED
-        self.cancelled_at = datetime.now(timezone.utc)
-        self.updated_at = datetime.now(timezone.utc)
-        await self.save() 

@@ -6,7 +6,9 @@ from models.employee import Employee, Role
 from models.meet import Meet, MeetStatus
 from auth.jwt_bearer import JWTBearer
 from auth.jwt_handler import decode_jwt
-
+from utils.verify_admin import verify_admin
+from utils.verify_hr import verify_hr
+from utils.verify_employee import verify_employee
 router = APIRouter()
 
 class ScheduleMeetRequest(BaseModel):
@@ -17,16 +19,6 @@ class ScheduleMeetRequest(BaseModel):
     location: Optional[str] = Field(default=None, description="Physical location (if in-person)")
     notes: Optional[str] = Field(default=None, description="Additional notes about the meeting")
     # meeting_link: Optional[str] = Field(default=None, description="Link to the virtual meeting")
-
-async def verify_admin(token: str = Depends(JWTBearer())):
-    """Verify that the user is an admin."""
-    payload = decode_jwt(token)
-    if not payload or payload.get("role") != "admin":
-        raise HTTPException(
-            status_code=403,
-            detail="Only administrators can access this endpoint"
-        )
-    return payload
 
 @router.post("/admin-schedule", tags=["Meetings"])
 async def admin_schedule_meeting(
@@ -105,16 +97,6 @@ async def admin_schedule_meeting(
             status_code=500,
             detail=f"Error scheduling meeting: {str(e)}"
         )
-
-async def verify_hr(token: str = Depends(JWTBearer())):
-    """Verify that the user is an HR."""
-    payload = decode_jwt(token)
-    if not payload or payload.get("role") != "hr":
-        raise HTTPException(
-            status_code=403,
-            detail="Only HR personnel can access this endpoint"
-        )
-    return payload
 
 @router.post("/hr-schedule", tags=["Meetings"])
 async def hr_schedule_meeting(
@@ -199,18 +181,8 @@ async def hr_schedule_meeting(
             detail=f"Error scheduling meeting: {str(e)}"
         )
 
-async def verify_user(token: str = Depends(JWTBearer())):
-    """Verify any authenticated user."""
-    payload = decode_jwt(token)
-    if not payload:
-        raise HTTPException(
-            status_code=401,
-            detail="Invalid authentication credentials"
-        )
-    return payload
-
 @router.get("/organized-meetings", tags=["Meetings"])
-async def get_organized_meetings(user: dict = Depends(verify_user)):
+async def get_organized_meetings(user: dict = Depends(verify_employee)):
     """
     Get all meetings organized by the authenticated user.
     """
@@ -253,7 +225,7 @@ async def get_organized_meetings(user: dict = Depends(verify_user)):
         )
 
 @router.get("/meetings-to-attend", tags=["Meetings"])
-async def get_meetings_to_attend(user: dict = Depends(verify_user)):
+async def get_meetings_to_attend(user: dict = Depends(verify_employee)):
     """
     Get all meetings where the authenticated user is a participant.
     """

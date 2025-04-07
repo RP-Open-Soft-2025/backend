@@ -15,6 +15,8 @@ from models import Employee, Notification
 from models.employee import Role
 from utils.utils import send_new_session_email, send_escalation_mail
 from utils.chain_creation import analyze_employee_report
+from utils.verify_employee import verify_employee
+
 router = APIRouter()
 llm_add = Settings().LLM_ADDR
 
@@ -48,7 +50,6 @@ class ChainContextUpdateRequest(BaseModel):
 
 class ChainCompletionRequest(BaseModel):
     chain_id: str
-    session_id: str
     reason: str
 
 class CreateSessionRequest(BaseModel):
@@ -79,19 +80,6 @@ class LLMConnectionManager:
                 await connection.send_json(message)
 
 llm_manager = LLMConnectionManager()
-
-async def verify_employee(token: str = Depends(JWTBearer())):
-    """Verify that the user exists in the database."""
-    if not token or token.lower() == "not authenticated":
-        raise HTTPException(status_code=401, detail="Unauthorized")
-    
-    payload = decode_jwt(token)
-    employee = await Employee.find_one({"employee_id": payload["employee_id"]})
-    
-    if not employee:
-        raise HTTPException(status_code=403, detail="Only authenticated users can access this endpoint")
-    
-    return employee
 
 @router.websocket("/ws/llm/{chat_id}")
 async def llm_websocket_endpoint(websocket: WebSocket, chat_id: str):
@@ -190,7 +178,7 @@ async def send_message(
         escalate_the_chain = response_from_llm.get("escalate_the_chain", False)
         
         if complete_the_chain:
-            await complete_chain(chain.chain_id)
+            await chain.complete_chain()
         
         if escalate_the_chain:
             await chain.escalate_chain(reason=f"Chain escalated for the employee {employee.employee_id} by Chatbot")
@@ -290,22 +278,6 @@ async def initiate_chat(request: ChatStatusRequest, employee: Employee = Depends
         "sessionStatus": session.status,
         "chainStatus": chain.status
     }
-
-@router.post("/complete-chain")
-async def complete_chain(request: ChainCompletionRequest):
-    """
-    Mark a chain as completed.
-    Called by LLM backend when it's satisfied with the conversation.
-    """
-    chain = await Chain.get_by_id(request.chain_id)
-    if not chain:
-        raise HTTPException(status_code=404, detail="Chain not found")
-    
-    if chain.status != ChainStatus.ACTIVE:
-        raise HTTPException(status_code=400, detail="Chain is not active")
-
-    await chain.complete_chain()
-    return {"message": "Chain completed successfully"}
 
 @router.post("/escalate-chain")
 async def escalate_chain(request: ChainCompletionRequest):
