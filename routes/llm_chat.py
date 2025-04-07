@@ -279,22 +279,6 @@ async def initiate_chat(request: ChatStatusRequest, employee: Employee = Depends
         "chainStatus": chain.status
     }
 
-@router.post("/escalate-chain")
-async def escalate_chain(request: ChainCompletionRequest):
-    """
-    Mark a chain as escalated to HR.
-    Called by LLM backend when it detects need for HR intervention.
-    """
-    chain = await Chain.get_by_id(request.chain_id)
-    if not chain:
-        raise HTTPException(status_code=404, detail="Chain not found")
-    
-    if chain.status != ChainStatus.ACTIVE:
-        raise HTTPException(status_code=400, detail="Chain is not active")
-
-    await chain.escalate_chain()
-    return {"message": "Chain escalated to HR"}
-
 @router.get("/history/{chat_id}", response_model=List[ChatSummary])
 async def get_chat_history(
     chat_id: str,

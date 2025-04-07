@@ -20,6 +20,7 @@ class Chain(Document):
     chain_id: str = Field(default_factory=lambda: f"CHAIN{uuid.uuid4().hex[:6].upper()}", description="Unique identifier for the chain")
     employee_id: str = Field(..., description="Employee ID associated with this chain")
     session_ids: List[str] = Field(default_factory=list, description="List of session IDs in this chain")
+    meet_id: Optional[str] = Field(default=None, description="ID of the meet associated with this chain")
     status: ChainStatus = Field(default=ChainStatus.ACTIVE, description="Current status of the chain")
     context: str = Field(default="", description="Context from previous sessions in the chain")
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), description="When the chain was created")

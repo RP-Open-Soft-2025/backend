@@ -6,7 +6,7 @@ from datetime import timezone, datetime, timedelta
 from pydantic import BaseModel, EmailStr, Field
 from models.session import Session, SessionStatus
 from models.employee import Employee, Role
-from models.meet import Meet
+from models.meet import Meet, MeetStatus
 from models.chain import Chain, ChainStatus
 from passlib.context import CryptContext
 import random
@@ -50,6 +50,7 @@ class ChainResponse(BaseModel):
     chain_id: str
     employee_id: str
     session_ids: List[str]
+    sessions: Optional[List[SessionResponse]] = None
     status: ChainStatus
     context: Optional[str] = None
     created_at: datetime
@@ -71,9 +72,18 @@ class BlockUserRequest(BaseModel):
     employee_id: str = Field(..., description="ID of the employee to block/unblock")
     reason: Optional[str] = Field(default=None, description="Reason for blocking the user")
 
+class MeetResponse(BaseModel):
+    meet_id: str
+    user_id: str
+    with_user_id: str
+    scheduled_at: datetime
+    duration_minutes: int
+    status: MeetStatus
+
 class EscalatedChainResponse(BaseModel):
     chain_id: str
     session_ids: List[str]
+    meet: Optional[MeetResponse] = None
     employee_id: str
     escalation_reason: str
     escalated_at: datetime
@@ -521,7 +531,7 @@ async def get_user(userid: str, hr: Employee = Depends(verify_hr)):
             )
         
         # Convert to dict and exclude sensitive information
-        user_dict = user_det.dict(exclude={'password'})
+        user_dict = user_det.model_dump(exclude={'password'})
         return user_dict
     except HTTPException:
         raise
@@ -686,11 +696,22 @@ async def get_escalated_chains(hr: Employee = Depends(verify_hr)):
         if hr.role == Role.HR:
             employees = await Employee.get_employees_by_manager(hr.employee_id)
             employee_ids = [emp.employee_id for emp in employees]
-            chains = await Chain.find({"employee_id": {"$in": employee_ids}}).to_list()
+            chains = await Chain.find({"employee_id": {"$in": employee_ids},
+                                       "status": ChainStatus.ESCALATED}).to_list()
         else:
             chains = await Chain.find({"status": ChainStatus.ESCALATED}).to_list()
 
-        return chains
+        result = []
+        for chain in chains:
+            chain_dict = chain.model_dump()
+            if chain.meet_id:
+                meet = await Meet.find_one({"meet_id": chain.meet_id})
+                print(meet)
+                if meet:
+                    chain_dict["meet"] = meet
+            result.append(chain_dict)
+
+        return result
         
     except Exception as e:
         raise HTTPException(
@@ -719,8 +740,24 @@ async def get_employee_chains(employee_id: str, hr: Employee = Depends(verify_hr
             )
         
         chains = await Chain.find({"employee_id": employee_id}).to_list()
-        return chains
         
+        result = []
+        for chain in chains[1:2]:
+            chain_dict = chain.model_dump()
+            sessions = await Session.find({"session_id": {"$in": chain.session_ids}}).to_list()
+            session_responses = []
+            
+            for session in sessions:
+                session_data = session.model_dump()
+                # Map user_id to employee_id to match SessionResponse model
+                session_data["employee_id"] = session_data.pop("user_id")
+                session_responses.append(session_data)
+                
+            chain_dict["sessions"] = session_responses
+            result.append(chain_dict)
+            
+        return result
+
     except Exception as e:
         raise HTTPException(
             status_code=500,
@@ -786,12 +823,6 @@ async def escalate_chain(chain_id: str, hr: Employee = Depends(verify_hr)):
             raise HTTPException(
                 status_code=403,
                 detail="You can only escalate chains for employees assigned to you"
-            )
-        
-        if chain.status != ChainStatus.ACTIVE:
-            raise HTTPException(
-                status_code=400,
-                detail="Chain is not active"
             )
         
         await chain.escalate_chain(reason=f"Chain escalated by HR {hr.employee_id}")
