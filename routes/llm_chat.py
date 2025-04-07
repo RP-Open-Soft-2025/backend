@@ -3,8 +3,6 @@ from typing import List, Dict, Any, Set, Optional
 from models.chat import Chat, ChatMode, SenderType, SentimentType
 from models.session import Session, SessionStatus
 from models.chain import Chain, ChainStatus
-from auth.jwt_bearer import JWTBearer
-from auth.jwt_handler import decode_jwt
 from pydantic import BaseModel, Field
 from datetime import datetime, timezone, timedelta
 from config.config import Settings
@@ -12,8 +10,7 @@ import requests
 from routes.admin import verify_hr
 from routes.employee import ChatSummary, EmployeeChatsResponse 
 from models import Employee, Notification
-from models.employee import Role
-from utils.utils import send_new_session_email, send_escalation_mail
+from utils.utils import send_new_session_email
 from utils.chain_creation import analyze_employee_report
 from utils.verify_employee import verify_employee
 
@@ -173,11 +170,16 @@ async def send_message(
         "timestamp": datetime.now(timezone.utc).isoformat()
     })
 
+    print('response_from_llm: ', response_from_llm)
+
     # Check if complete_the_chain or escalate_the_chain is true in LLM response
     if response_from_llm and isinstance(response_from_llm, dict):
         complete_the_chain = response_from_llm.get("complete_the_chain", False)
         escalate_the_chain = response_from_llm.get("escalate_the_chain", False)
         
+        print('complete_the_chain: ', complete_the_chain)
+        print('escalate_the_chain: ', escalate_the_chain)
+
         if complete_the_chain:
             await chain.complete_chain()
         
@@ -402,23 +404,12 @@ async def end_session(
         if employee_messages_length < 10:
             raise HTTPException(status_code=400, detail="Cannot end the chat as the employee has not sent more than 10 messages")
 
-        # Get all messages from current session
-        current_session_messages = [
-            {
-                "sender": msg.sender_type,
-                "text": msg.text,
-                "timestamp": msg.timestamp.isoformat()
-            }
-            for msg in chat.messages
-        ]
-
         # Prepare data for LLM backend
         data = {
             "chain_id": chain.chain_id,
             "session_id": session.session_id,
             "employee_id": employee.employee_id,
             "current_context": chain.context,
-            "current_session_messages": current_session_messages
         }
 
         # Call LLM backend to end session and get updated context

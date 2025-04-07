@@ -5,11 +5,11 @@ from enum import Enum
 from beanie import Document
 from pydantic import  Field
 import uuid
-from models.chat import Chat
 from models.session import Session, SessionStatus
 from models.employee import Employee
 from utils.utils import send_escalation_mail
 from models.meet import Meet
+from models.notification import Notification
 
 class ChainStatus(str, Enum):
     ACTIVE = "active"    # Chain is ongoing
@@ -85,8 +85,10 @@ class Chain(Document):
 
     async def complete_chain(self):
         """Mark the chain as completed"""
-        if self.status != ChainStatus.ACTIVE:
-            raise ValueError("Only active chains can be completed")
+        
+        # if self.status != ChainStatus.ACTIVE:
+        #     raise ValueError("Only active chains can be completed")
+        
         self.status = ChainStatus.COMPLETED
         self.completed_at = datetime.now(timezone.utc)
         self.updated_at = datetime.now(timezone.utc)
@@ -100,8 +102,9 @@ class Chain(Document):
 
     async def escalate_chain(self, reason: str):
         """Mark the chain as escalated to HR and complete it"""
-        if self.status != ChainStatus.ACTIVE:
-            raise ValueError("Only active chains can be escalated")
+        
+        # if self.status != ChainStatus.ACTIVE:
+        #     raise ValueError("Only active chains can be escalated")
         
         # First complete the chain
         self.status = ChainStatus.COMPLETED
@@ -188,4 +191,13 @@ Best regards,
 System
 """)
         
+        notification = Notification(
+            employee_id=employee.employee_id,
+            title="Counseling Chain Escalated",
+            description=f"Your counseling chain has been escalated to HR for further assistance. A meeting has been scheduled with your HR representative.",
+            created_at=datetime.now(timezone.utc)
+        )
+
+        await notification.save()
+
         await self.save()
