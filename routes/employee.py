@@ -5,16 +5,12 @@ from typing import List, Optional, Dict, Any, Set
 from pydantic import BaseModel, Field
 from models.meet import Meet, MeetStatus
 from models.session import Session, SessionStatus
-from models.chat import Chat, Message, SenderType
+from models.chat import Chat
 from models.employee import Employee, CompanyData
 from models.chain import Chain, ChainStatus
-from auth.jwt_bearer import JWTBearer
-from auth.jwt_handler import decode_jwt
 import datetime
-from collections import defaultdict
 from models.notification import Notification, NotificationStatus
 from bson import ObjectId
-import requests
 from config.config import Settings
 from utils.verify_employee import verify_employee
 
@@ -126,6 +122,16 @@ class ChainMessagesResponse(BaseModel):
     last_updated: datetime.datetime
     chat_mode: str
     is_escalated: bool = False
+
+async def get_formatted_meeting(meet_id: str):
+    """Helper function to get a meeting and format it properly for serialization"""
+    meeting = await Meet.find_one({"meet_id": meet_id})
+    if not meeting:
+        return None
+    
+    # Convert to dictionary and remove _id field which contains PydanticObjectId
+    meeting_dict = meeting.model_dump(exclude={"id"})
+    return meeting_dict
 
 @router.get("/profile", response_model=UserDetails, tags=["Employee"])
 async def get_user_profile(
@@ -250,7 +256,8 @@ async def get_user_profile(
                     "chain_id": chain.chain_id,
                     "status": chain.status,
                     "notes": chain.notes,
-                    "created_at": chain.created_at
+                    "created_at": chain.created_at,
+                    "meeting": await get_formatted_meeting(chain.meet_id) if chain.status == ChainStatus.ESCALATED and chain.meet_id else None
                 }
                 for chain in recent_chains
             ]
@@ -268,7 +275,6 @@ async def get_user_profile(
             status_code=500,
             detail=f"Error fetching user profile: {str(e)}"
         )
-
 
 @router.get("/scheduled-meets", response_model=List[MeetResponse], tags=["Employee"])
 async def get_scheduled_meets(
