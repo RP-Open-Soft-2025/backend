@@ -57,8 +57,8 @@ async def create_chain(request: CreateChainRequest):
         
         # Set default scheduled time to tomorrow at 10 AM if not provided
         if not request.scheduled_time:
-            tomorrow = datetime.now(timezone.utc) + timedelta(days=1)
-            request.scheduled_time = tomorrow.replace(hour=10, minute=0, second=0, microsecond=0)
+            now = datetime.now(timezone.utc)
+            request.scheduled_time = now + timedelta(minutes=2)
         
         # Create a new chat for the session
         chat = Chat(user_id=request.employee_id)
