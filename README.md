@@ -1,70 +1,129 @@
-# FastAPI and MongoDB Boilerplate
+# DeloConnect Backend
 
-A simple starter for building RESTful APIs with FastAPI and MongoDB.
-
-![image](./img.jpg)
+A FastAPI-based backend application for DeloConnect, featuring employee management, chat functionality, and HR operations.
 
 ## Features
 
-+ Python FastAPI backend.
-+ MongoDB database.
-+ Authentication
-+ Deployment
+- Employee Management System
+- Real-time Chat System
+- HR Operations Dashboard
+- Authentication & Authorization
+- MongoDB Database Integration
+- WebSocket Support for Real-time Updates
+- API Documentation with Swagger UI
 
-## Using the applicaiton
+## Prerequisites
 
-To use the application, follow the outlined steps:
+- Python 3.8 or higher
+- MongoDB Atlas account (or other hosted MongoDB service)
+- Docker (optional, for containerized deployment)
 
-1. Clone this repository and create a virtual environment in it:
+## Installation
 
-```console
-$ python3 -m venv venv
+1. Clone the repository:
+```bash
+git clone <repository-url>
+cd backend
 ```
 
-2. Install the modules listed in the `requirements.txt` file:
+2. Create and activate a virtual environment:
+```bash
+# Windows
+python -m venv venv
+.\venv\Scripts\activate
 
-```console
-(venv)$ pip3 install -r requirements.txt
-```
-3. You also need to start your mongodb instance either locally or on Docker as well as create a `.env.dev` file. See the `.env.sample` for configurations. 
-
-    Example for running locally MongoDB at port 27017:
-    ```console
-    cp .env.sample .env.dev
-    ```
-
-4. Start the application:
-
-```console
-python3 main.py
+# Linux/Mac
+python3 -m venv venv
+source venv/bin/activate
 ```
 
-
-The starter listens on port 8000 on address [0.0.0.0](0.0.0.0:8080). 
-
-![FastAPI-MongoDB starter](doc.png)
-
-
-## Testing
-
-To run the tests, run the following command:
-
-```console
-(venv)$ pytest
+3. Install dependencies:
+```bash
+pip install -r requirements.txt
 ```
 
-You can also write your own tests in the `tests` directory.  
-The test follow by the official support [FastAPI testing guide](https://fastapi.tiangolo.com/tutorial/testing/), [pytest](https://docs.pytest.org/en/stable/), [anyio](https://anyio.readthedocs.io/en/stable/) for async testing application.
+## Environment Setup
 
-## Deployment
+1. Create a `.env.dev` file in the root directory:
+```bash
+cp .env.sample .env.dev
+```
 
-This application can be deployed on any PaaS such as [Heroku](https://heroku.com) or [Okteto](https://okteto) and any other cloud service provider.
+2. Configure the environment variables in `.env.dev`:
+```env
+# Database Configuration
+DATABASE_URL=mongodb+srv://<username>:<password>@<cluster>.mongodb.net/<database>?retryWrites=true&w=majority
 
-## Contributing ?
+# Security Configuration
+secret_key=your-secure-secret-key-here
 
+# Email Configuration
+sender_email=your-email@example.com
+sender_password=your-email-password
+email_template=path/to/email/template.html
+admin_email_template=path/to/admin/email/template.html
 
-Fork the repo, make changes and send a PR. We'll review it together!
+# LLM Configuration
+LLM_ADDR=http://your-llm-service:port
+```
 
-## License
+Note: Replace the DATABASE_URL with your actual MongoDB Atlas connection string. You can get this from your MongoDB Atlas dashboard:
+1. Go to your cluster
+2. Click "Connect"
+3. Choose "Connect your application"
+4. Copy the connection string and replace `<username>`, `<password>`, `<cluster>`, and `<database>` with your actual values
 
-This project is licensed under the terms of MIT license.
+## Running the Application
+
+### Option 1: Using Docker Compose (Recommended)
+
+1. Build and run the application:
+```bash
+docker-compose up --build
+```
+
+2. Access the application at `http://localhost:8080`
+
+### Option 2: Local Development
+
+1. Run the application:
+```bash
+python main.py
+```
+
+The application will be available at `http://localhost:8080`
+
+## API Documentation
+
+Once the application is running, you can access the API documentation at:
+
+- Swagger UI: `http://localhost:8080/docs`
+- ReDoc: `http://localhost:8080/redoc`
+
+## Project Structure
+
+```
+backend/
+├── main.py               # Application running point
+├── app.py                # Application entry point
+├── auth/                 # Authentication
+├── employee_filtering/   # Employee filtering API
+├── config/               # Configuration files
+├── models/               # Database models
+├── routes/               # API routes
+├── utils/                # Utility functions
+```
+
+## Development
+
+1. Make sure you have a valid MongoDB Atlas connection string in your `.env.dev` file
+2. Update other environment variables as needed
+3. Run the application using either Docker Compose or directly with Python
+4. Access the API documentation to test endpoints
+
+## Notes
+
+- The application uses MongoDB Atlas for data storage
+- Email functionality requires proper SMTP configuration
+- LLM integration requires a running LLM service
+- WebSocket endpoints are available for real-time updates
